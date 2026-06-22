@@ -35,7 +35,15 @@ PYTHON_BIN="$(PYTHONPATH="${SRC_LINK}/src" python3 -c "import sys; print(sys.exe
 
 mkdir -p "${SUPPORT}" "${SUPPORT}/.runtime" "${SUPPORT}/artifacts" "${HOME}/Library/LaunchAgents"
 
-echo "Installing agent package into Application Support (launchd-safe)..."
+echo "Syncing governance mirror for launchd (Desktop-safe read)..."
+MIRROR="${SUPPORT}/target-mirror"
+mkdir -p "${MIRROR}/backend/docs/governance" "${MIRROR}/backend/app/routers" "${SUPPORT}/config"
+cp -Rf "${ROOT}/config/." "${SUPPORT}/config/"
+if [[ -d "${TARGET}/backend" ]]; then
+  cp -f "${TARGET}/backend/docs/governance/"*.md "${MIRROR}/backend/docs/governance/" 2>/dev/null || true
+  cp -f "${TARGET}/backend/AGENTS.md" "${MIRROR}/backend/" 2>/dev/null || true
+  cp -f "${TARGET}/backend/app/routers/gateway.py" "${MIRROR}/backend/app/routers/" 2>/dev/null || true
+fi
 python3 -m pip install --target "${SUPPORT}/pylibs" "${ROOT}" -q --upgrade
 
 cat >"${SUPPORT}/run_loop.sh" <<SCRIPT
@@ -45,7 +53,9 @@ export AGENT_SOURCE_ROOT="${SRC_LINK}"
 export AGENT_DATA_DIR="${SUPPORT}"
 export PYTHONPATH="${SUPPORT}/pylibs:${SRC_LINK}/src"
 export TARGET_REPO="${TARGET}"
+export TARGET_REPO_MIRROR="${SUPPORT}/target-mirror"
 export LOOP_INTERVAL_SECONDS="${INTERVAL}"
+export AGENT_CONFIG_DIR="${SUPPORT}/config"
 export AGENT_BACKGROUND_MODE="1"
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"

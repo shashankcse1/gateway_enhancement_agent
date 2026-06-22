@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,14 +33,23 @@ class CompetitorRegistry:
         self._repo = target_repo()
 
     def _read_reference(self, rel_path: str) -> str | None:
-        full = self._repo / rel_path
-        if not full.exists():
-            alt = self._repo / "backend" / rel_path
-            if alt.exists():
-                full = alt
-            else:
-                return None
-        return full.read_text(encoding="utf-8")[:4000]
+        for base in self._candidate_roots():
+            full = base / rel_path
+            if not full.exists():
+                full = base / "backend" / rel_path
+            if full.exists():
+                try:
+                    return full.read_text(encoding="utf-8")[:4000]
+                except OSError:
+                    continue
+        return None
+
+    def _candidate_roots(self) -> list[Path]:
+        roots = [self._repo]
+        mirror = os.environ.get("TARGET_REPO_MIRROR", "").strip().strip('"').strip("'")
+        if mirror:
+            roots.append(Path(mirror).expanduser().resolve())
+        return roots
 
     def load_profiles(self) -> list[CompetitorProfile]:
         profiles: list[CompetitorProfile] = []

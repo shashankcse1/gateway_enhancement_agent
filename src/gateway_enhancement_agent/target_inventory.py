@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,28 @@ class InventoryGap:
 class TargetInventory:
     def __init__(self, repo: Path | None = None) -> None:
         self.repo = repo or target_repo()
+        mirror = os.environ.get("TARGET_REPO_MIRROR", "").strip().strip('"').strip("'")
+        self.mirror = Path(mirror).expanduser().resolve() if mirror else None
+
+    def _read_text(self, path: Path) -> str | None:
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            if self.mirror is None:
+                return None
+            rel = None
+            for base in (self.repo,):
+                try:
+                    rel = path.relative_to(base)
+                    break
+                except ValueError:
+                    continue
+            if rel is None:
+                return None
+            alt = self.mirror / rel
+            if alt.exists():
+                return alt.read_text(encoding="utf-8")
+            return None
 
     def _backend(self) -> Path:
         backend = self.repo / "backend"
@@ -35,9 +58,10 @@ class TargetInventory:
 
     def gateway_routes(self) -> int:
         gateway_py = self._backend() / "app/routers/gateway.py"
-        if not gateway_py.exists():
+        text = self._read_text(gateway_py)
+        if not text:
             return 0
-        return len(GATEWAY_ROUTE.findall(gateway_py.read_text(encoding="utf-8")))
+        return len(GATEWAY_ROUTE.findall(text))
 
     def gateway_tests(self) -> list[str]:
         tests = self._backend() / "tests"
@@ -45,23 +69,33 @@ class TargetInventory:
             return []
         return sorted(p.name for p in tests.glob("test_gateway*.py"))
 
-    def agents_contract_exists(self) -> bool:
-        return (self._backend() / "AGENTS.md").exists()
-
     def parse_inventory_gaps(self) -> list[InventoryGap]:
-        for rel in (
-            "docs/governance/api-inventory-and-ui-map.md",
+        rels = (
             "backend/docs/governance/api-inventory-and-ui-map.md",
-        ):
-            path = self.repo / rel
-            if path.exists():
-                return self._parse_inventory_file(path)
+            "docs/governance/api-inventory-and-ui-map.md",
+        )
+        paths: list[Path] = []
+        for rel in rels:
+            paths.append(self.repo / rel)
+            if self.mirror:
+                paths.append(self.mirror / rel)
+        for path in paths:
+            gaps = self._parse_inventory_file(path)
+            if gaps:
+                return gaps
         return []
 
+    def agents_contract_exists(self) -> bool:
+        path = self._backend() / "AGENTS.md"
+        return self._read_text(path) is not None
+
     def _parse_inventory_file(self, path: Path) -> list[InventoryGap]:
+        text = self._read_text(path)
+        if not text:
+            return []
         gaps: list[InventoryGap] = []
         section = ""
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in text.splitlines():
             if line.startswith("### "):
                 section = line.removeprefix("### ").strip()
                 continue

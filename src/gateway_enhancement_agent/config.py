@@ -24,6 +24,9 @@ def project_root() -> Path:
 
 
 def config_dir() -> Path:
+    override = os.environ.get("AGENT_CONFIG_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
     return source_root() / "config"
 
 
