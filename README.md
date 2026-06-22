@@ -91,13 +91,25 @@ gateway-agent run     # full SDLC cycle (includes validation)
 
 Cycle **fails** if either validation layer fails. See `artifacts/cycle-XXXX/validation_report.md`.
 
-## Mac install
+## Schedule on macOS
+
+**Recommended (while logged in):** background daemon loop
 
 ```bash
-./scripts/install_local.sh
-# Add to ~/.zshrc if needed:
-# export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+make daemon-start    # hourly cycles (LOOP_INTERVAL_SECONDS in .env)
+make daemon-status
+tail -f .runtime/daemon.log
+make daemon-stop
 ```
+
+**Optional:** macOS LaunchAgent (runs when logged in; may need Full Disk Access if project lives under Desktop)
+
+```bash
+make schedule-install
+make schedule-uninstall
+```
+
+Default interval: **3600s** (1 hour). Edit `LOOP_INTERVAL_SECONDS` in `.env`.
 
 
 ## Project skill (optional)
