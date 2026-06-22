@@ -1,4 +1,4 @@
-.PHONY: install test self-test validate run run-full loop status discover analyze schedule schedule-install schedule-uninstall daemon-start daemon-stop daemon-status execute
+.PHONY: install test self-test validate run run-full loop status discover analyze schedule schedule-install schedule-uninstall login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute
 
 ROOT := $(shell pwd)
 GATEWAY_REPO ?= /Users/sk/Desktop/untitled folder/new design
@@ -9,11 +9,24 @@ install:
 
 execute: run
 
+# Recommended: auto-start on Mac login + keep alive
+login-install:
+	bash ./scripts/install_login_agent.sh
+
+login-uninstall:
+	bash ./scripts/uninstall_login_agent.sh
+
+agent-status:
+	bash ./scripts/agent_status.sh
+
+ensure-running:
+	bash ./scripts/ensure_running.sh
+
 schedule-install:
-	bash ./scripts/install_schedule.sh
+	bash ./scripts/install_login_agent.sh
 
 schedule-uninstall:
-	bash ./scripts/uninstall_schedule.sh
+	bash ./scripts/uninstall_login_agent.sh
 
 schedule:
 	@echo "Use: make schedule-install  (launchd, interval from .env)"

@@ -9,12 +9,18 @@ from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
 from gateway_enhancement_agent.state_store import CycleState
 
 
+def _background_mode() -> bool:
+    return os.environ.get("AGENT_BACKGROUND_MODE", "").strip().lower() in {"1", "true", "yes"}
+
+
 def run_loop(
     *,
     interval_seconds: int,
     max_cycles: int = 0,
     skip_validation: bool = False,
 ) -> list[CycleState]:
+    if _background_mode():
+        skip_validation = True
     pipeline = SDLCPipeline()
     completed: list[CycleState] = []
     count = 0

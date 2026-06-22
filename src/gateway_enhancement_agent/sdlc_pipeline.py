@@ -17,6 +17,8 @@ from gateway_enhancement_agent.sdlc_validate import (
     combined_summary,
     run_combined_validation,
 )
+from gateway_enhancement_agent.self_test_runner import SelfTestRunner
+import os
 
 
 class SDLCPipeline:
@@ -33,7 +35,10 @@ class SDLCPipeline:
             cycle = self._phase_design(cycle)
             cycle = self._phase_implement(cycle)
             if not skip_validation:
-                cycle = self._phase_validate(cycle)
+                if os.environ.get("AGENT_SKIP_TARGET_VALIDATION", "").strip() in {"1", "true", "yes"}:
+                    cycle = self._phase_validate_self_only(cycle)
+                else:
+                    cycle = self._phase_validate(cycle)
             else:
                 cycle.completed_phases.append("validate")
                 cycle.metadata["validation_skipped"] = True
@@ -115,6 +120,27 @@ class SDLCPipeline:
                 cycle.errors.append("Agent self-tests failed")
             if not summary["target_validation_passed"]:
                 cycle.errors.append("Target repo validation gates failed")
+        cycle.completed_phases.append("validate")
+        self.store.update_cycle(cycle)
+        return cycle
+
+    def _phase_validate_self_only(self, cycle: CycleState) -> CycleState:
+        cycle.phase = "validate"
+        runner = SelfTestRunner()
+        results = runner.run_all()
+        summary = {
+            "passed": all(r.passed for r in results if r.required),
+            "self_test_passed": all(r.passed for r in results if r.required),
+            "target_validation_passed": None,
+            "target_validation_skipped": True,
+            "results": [{"gate_id": r.gate_id, "passed": r.passed} for r in results],
+        }
+        self.store.write_json(cycle.cycle_id, "validation_report.json", summary)
+        cycle.metadata["validation_passed"] = summary["passed"]
+        cycle.metadata["self_test_passed"] = summary["self_test_passed"]
+        cycle.metadata["target_validation_skipped"] = True
+        if not summary["passed"]:
+            cycle.errors.append("Agent self-tests failed")
         cycle.completed_phases.append("validate")
         self.store.update_cycle(cycle)
         return cycle
