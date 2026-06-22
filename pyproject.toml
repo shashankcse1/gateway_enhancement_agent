@@ -4,14 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gateway-enhancement-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local competitor-gap analysis and SDLC loop for AI gateway codebases (no cloud services)."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
 
 [project.scripts]
 gateway-agent = "gateway_enhancement_agent.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

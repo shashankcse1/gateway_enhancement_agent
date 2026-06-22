@@ -36,7 +36,12 @@ class StateStore:
     def load(self) -> dict[str, Any]:
         if not self.state_file.exists():
             return {"version": 1, "cycle_count": 0, "last_cycle": None, "history": []}
-        return json.loads(self.state_file.read_text(encoding="utf-8"))
+        try:
+            return json.loads(self.state_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            backup = self.state_file.with_suffix(".json.bak")
+            self.state_file.replace(backup)
+            return {"version": 1, "cycle_count": 0, "last_cycle": None, "history": []}
 
     def save(self, payload: dict[str, Any]) -> None:
         self.state_file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

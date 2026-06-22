@@ -19,9 +19,15 @@ The user is implementing a work order from `gateway-enhancement-agent/artifacts/
 2. Read `backend/AGENTS.md` before any backend change.
 3. Close one gap per cycle: backend + tests + governance docs (+ UI if inventory marks Partial/Gap).
 4. Preserve security contract: roles, prod dual-approval, deny-path audit.
-5. After implementation, user runs `gateway-agent validate` from the enhancement agent project.
+5. After implementation, run validation from the enhancement agent project (mandatory SDLC gate):
 
-## Implementation checklist
+```bash
+cd /path/to/gateway-enhancement-agent
+TARGET_REPO=/path/to/gateway-platform gateway-agent validate
+# or: make validate
+```
+
+Cycle fails if agent self-tests OR target gates fail.
 
 - [ ] Read design brief and gap matrix for the active cycle
 - [ ] Implement minimal correct slice in gateway repo

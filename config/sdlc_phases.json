@@ -24,7 +24,7 @@
     {
       "id": "validate",
       "label": "Validate",
-      "description": "Run local validation gates against TARGET_REPO (pytest, smoke, control coverage)."
+      "description": "Run agent self-tests (pytest) then TARGET_REPO gates (pytest, smoke, control coverage). Cycle fails if either layer fails."
     },
     {
       "id": "document",

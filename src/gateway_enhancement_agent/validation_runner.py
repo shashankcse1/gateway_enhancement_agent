@@ -23,9 +23,9 @@ class GateResult:
 
 
 class ValidationRunner:
-    def __init__(self, repo: Path | None = None) -> None:
+    def __init__(self, repo: Path | None = None, config_name: str = "validation_gates.json") -> None:
         self.repo = repo or target_repo()
-        self.config = load_json("validation_gates.json")
+        self.config = load_json(config_name)
 
     def run_all(self) -> list[GateResult]:
         results: list[GateResult] = []
@@ -34,7 +34,8 @@ class ValidationRunner:
         return results
 
     def _run_gate(self, gate: dict[str, Any]) -> GateResult:
-        cwd = self.repo / gate.get("cwd", ".")
+        cwd_rel = gate.get("cwd", ".")
+        cwd = self.repo if cwd_rel == "." else self.repo / cwd_rel
         command = list(gate["command"])
         timeout = int(gate.get("timeout_seconds", 300))
         try:

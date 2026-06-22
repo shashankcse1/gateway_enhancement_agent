@@ -75,11 +75,30 @@ Edit `config/competitors.json` to add competitors or capabilities (local only �
 
 Edit `config/validation_gates.json` to tune which commands run in `TARGET_REPO`.
 
-## Requirements
+## SDLC validation (mandatory)
 
-- Python 3.9+
-- **stdlib only** — no pip dependencies for the agent itself
-- Target repo must have `node`, `bash`, `python3`, and its usual dev tooling for validation gates
+Every `gateway-agent run` executes **two validation layers** unless `--skip-validation` is passed:
+
+1. **Agent self-tests** — `pytest` on this project (`config/agent_self_tests.json`)
+2. **Target repo gates** — gateway pytest, smoke scripts, control coverage (`config/validation_gates.json`)
+
+```bash
+make install          # Mac local install
+make self-test        # agent unit tests only
+make validate         # self-tests + gateway gates
+gateway-agent run     # full SDLC cycle (includes validation)
+```
+
+Cycle **fails** if either validation layer fails. See `artifacts/cycle-XXXX/validation_report.md`.
+
+## Mac install
+
+```bash
+./scripts/install_local.sh
+# Add to ~/.zshrc if needed:
+# export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+```
+
 
 ## Project skill (optional)
 

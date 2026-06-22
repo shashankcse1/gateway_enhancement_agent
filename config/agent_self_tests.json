@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "description": "Validation gates for this agent project (runs before TARGET_REPO gates).",
+  "gates": [
+    {
+      "id": "agent_unit_tests",
+      "label": "Agent unit tests (pytest)",
+      "cwd": ".",
+      "command": ["python3", "-m", "pytest", "-q", "tests"],
+      "required": true,
+      "timeout_seconds": 300
+    }
+  ]
+}

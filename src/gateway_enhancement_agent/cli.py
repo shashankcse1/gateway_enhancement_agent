@@ -13,7 +13,11 @@ from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
 from gateway_enhancement_agent.state_store import StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
-from gateway_enhancement_agent.validation_runner import ValidationRunner
+from gateway_enhancement_agent.sdlc_validate import (
+    combined_report_markdown,
+    combined_summary,
+    run_combined_validation,
+)
 
 
 def _load_dotenv() -> None:
@@ -75,9 +79,18 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(_: argparse.Namespace) -> int:
-    results = ValidationRunner().run_all()
-    print(ValidationRunner().report_markdown(results))
-    return 0 if ValidationRunner().summary(results)["passed"] else 1
+    combined = run_combined_validation()
+    print(combined_report_markdown(combined))
+    return 0 if combined.passed else 1
+
+
+def cmd_self_test(_: argparse.Namespace) -> int:
+    from gateway_enhancement_agent.self_test_runner import SelfTestRunner
+
+    runner = SelfTestRunner()
+    results = runner.run_all()
+    print(runner.report_markdown(results))
+    return 0 if runner.summary(results)["passed"] else 1
 
 
 def cmd_loop(args: argparse.Namespace) -> int:
@@ -101,10 +114,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("analyze", help="Print gap matrix").set_defaults(func=cmd_analyze)
 
     run_p = sub.add_parser("run", help="Run one full SDLC cycle")
-    run_p.add_argument("--skip-validation", action="store_true", help="Skip pytest/smoke gates")
+    run_p.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Skip SDLC validation (agent self-tests + TARGET_REPO gates). Not recommended.",
+    )
     run_p.set_defaults(func=cmd_run)
 
-    sub.add_parser("validate", help="Run validation gates in TARGET_REPO").set_defaults(func=cmd_validate)
+    sub.add_parser("self-test", help="Run agent unit tests only").set_defaults(func=cmd_self_test)
+
+    sub.add_parser("validate", help="Run agent self-tests + TARGET_REPO validation gates").set_defaults(func=cmd_validate)
 
     loop_p = sub.add_parser("loop", help="Run SDLC cycles continuously")
     loop_p.add_argument("--interval", type=int, default=int(os.environ.get("LOOP_INTERVAL_SECONDS", "3600")))

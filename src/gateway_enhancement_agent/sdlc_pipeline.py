@@ -12,7 +12,11 @@ from gateway_enhancement_agent.prompt_emitter import (
 )
 from gateway_enhancement_agent.state_store import CycleState, StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
-from gateway_enhancement_agent.validation_runner import ValidationRunner
+from gateway_enhancement_agent.sdlc_validate import (
+    combined_report_markdown,
+    combined_summary,
+    run_combined_validation,
+)
 
 
 class SDLCPipeline:
@@ -35,7 +39,10 @@ class SDLCPipeline:
                 cycle.metadata["validation_skipped"] = True
             cycle = self._phase_document(cycle)
             cycle = self._phase_release_prep(cycle)
-            cycle.status = "completed"
+            if not skip_validation and not cycle.metadata.get("validation_passed", True):
+                cycle.status = "failed"
+            else:
+                cycle.status = "completed"
             cycle.phase = "done"
         except Exception as exc:  # noqa: BLE001 — surface pipeline errors in state
             cycle.status = "failed"
@@ -92,21 +99,22 @@ class SDLCPipeline:
 
     def _phase_validate(self, cycle: CycleState) -> CycleState:
         cycle.phase = "validate"
-        runner = ValidationRunner()
-        results = runner.run_all()
-        self.store.write_json(
-            cycle.cycle_id,
-            "validation_report.json",
-            runner.summary(results),
-        )
+        combined = run_combined_validation()
+        summary = combined_summary(combined)
+        self.store.write_json(cycle.cycle_id, "validation_report.json", summary)
         self.store.write_text(
             cycle.cycle_id,
             "validation_report.md",
-            runner.report_markdown(results),
+            combined_report_markdown(combined),
         )
-        cycle.metadata["validation_passed"] = runner.summary(results)["passed"]
-        if not cycle.metadata["validation_passed"]:
-            cycle.errors.append("One or more required validation gates failed")
+        cycle.metadata["validation_passed"] = summary["passed"]
+        cycle.metadata["self_test_passed"] = summary["self_test_passed"]
+        cycle.metadata["target_validation_passed"] = summary["target_validation_passed"]
+        if not summary["passed"]:
+            if not summary["self_test_passed"]:
+                cycle.errors.append("Agent self-tests failed")
+            if not summary["target_validation_passed"]:
+                cycle.errors.append("Target repo validation gates failed")
         cycle.completed_phases.append("validate")
         self.store.update_cycle(cycle)
         return cycle
