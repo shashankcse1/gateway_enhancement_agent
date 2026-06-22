@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "description": "Commands run inside TARGET_REPO. All paths relative to repo root.",
+  "gates": [
+    {
+      "id": "frontend_syntax",
+      "label": "Frontend JavaScript syntax",
+      "cwd": "frontend",
+      "command": ["node", "--check", "app.js"],
+      "required": true
+    },
+    {
+      "id": "security_smoke",
+      "label": "Frontend security smoke",
+      "cwd": "frontend",
+      "command": ["bash", "scripts/security_smoke.sh"],
+      "required": true
+    },
+    {
+      "id": "control_coverage",
+      "label": "API control coverage",
+      "cwd": "backend",
+      "command": ["python3", "scripts/check_control_coverage.py"],
+      "required": true
+    },
+    {
+      "id": "gateway_pytest",
+      "label": "Gateway-focused pytest",
+      "cwd": "backend",
+      "command": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_gateway_inference.py",
+        "tests/test_gateway_fine_tuning.py",
+        "tests/test_gateway_assistants.py"
+      ],
+      "required": true,
+      "timeout_seconds": 600
+    }
+  ]
+}

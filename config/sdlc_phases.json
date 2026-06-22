@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "phases": [
+    {
+      "id": "discover",
+      "label": "Discover",
+      "description": "Inventory target gateway routes, tests, and governance docs."
+    },
+    {
+      "id": "analyze",
+      "label": "Analyze",
+      "description": "Build prioritized gap matrix from API inventory and competitor capabilities."
+    },
+    {
+      "id": "design",
+      "label": "Design",
+      "description": "Write implementation brief aligned with target repo AGENTS.md contract."
+    },
+    {
+      "id": "implement",
+      "label": "Implement",
+      "description": "Emit Cursor IDE work order for the top gap (you or Cursor Agent executes in TARGET_REPO)."
+    },
+    {
+      "id": "validate",
+      "label": "Validate",
+      "description": "Run local validation gates against TARGET_REPO (pytest, smoke, control coverage)."
+    },
+    {
+      "id": "document",
+      "label": "Document",
+      "description": "Generate governance documentation sync checklist."
+    },
+    {
+      "id": "release_prep",
+      "label": "Release prep",
+      "description": "Prepare release decision draft and risk touchpoints."
+    }
+  ]
+}
