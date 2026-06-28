@@ -76,8 +76,21 @@ class EmailNotifier:
                 smtp_password=smtp_password,
             )
             sent_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-            report_path = runtime_dir() / f"weekly_summary_{sent_at[:10]}.md"
+            report_stem = f"summary_{sent_at[:10]}_{sent_at[11:16].replace(':', '')}"
+            report_path = runtime_dir() / f"{report_stem}.md"
             report_path.write_text(body, encoding="utf-8")
+            matrix_path = runtime_dir() / f"{report_stem}_gap_matrix.json"
+            matrix_path.write_text(
+                json.dumps(summary.get("gap_matrix", []), indent=2) + "\n", encoding="utf-8"
+            )
+            coverage_path = runtime_dir() / f"{report_stem}_capability_matrix.json"
+            coverage_path.write_text(
+                json.dumps(summary.get("capability_matrix", []), indent=2) + "\n", encoding="utf-8"
+            )
+            performance_path = runtime_dir() / f"{report_stem}_performance.json"
+            performance_path.write_text(
+                json.dumps(summary.get("performance", {}), indent=2) + "\n", encoding="utf-8"
+            )
             self.save_state(
                 {
                     "last_sent_at": sent_at,
@@ -93,6 +106,9 @@ class EmailNotifier:
                 "subject": subject,
                 "sent_at": sent_at,
                 "report_path": str(report_path),
+                "gap_matrix_path": str(matrix_path),
+                "capability_matrix_path": str(coverage_path),
+                "performance_path": str(performance_path),
                 "smtp_mode": self.config.smtp_mode,
                 "smtp_host": self.config.smtp_host,
             }
