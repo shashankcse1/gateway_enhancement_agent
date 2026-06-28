@@ -89,13 +89,16 @@ Each implement phase runs **parallel subagents** (independent Ollama workers) th
 
 ## Summary email (every 2 hours)
 
-Sends a gateway status report to **shashankcse@gmail.com** every 2 hours (also checked after each hourly SDLC cycle when due).
+Sends a gateway status report every 2 hours via **macOS local Postfix** (`127.0.0.1:25`, no credentials) or a remote relay.
 
-1. Set Gmail app password in `.env`: `SMTP_USER`, `SMTP_PASSWORD`
-2. Set interval: `EMAIL_INTERVAL_HOURS=2` (default)
-3. Preview: `make weekly-report`
-4. Send now: `make send-weekly-report`
-5. Schedule: included in `make login-install` or `make weekly-email-install`
+1. **Local (default):** ensure Postfix is running — `sudo postfix start` if needed
+2. Set recipient in `.env`: `WEEKLY_EMAIL_TO=you@example.com`
+3. Local SMTP settings: `SMTP_MODE=local`, `SMTP_HOST=127.0.0.1`, `SMTP_PORT=25`
+4. Preview: `make weekly-report`
+5. Send now: `make send-weekly-report`
+6. Schedule: included in `make login-install` or `make weekly-email-install`
+
+For Gmail relay instead, set `SMTP_MODE=relay` with `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`.
 
 ## Commands
 

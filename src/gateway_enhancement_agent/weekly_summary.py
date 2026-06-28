@@ -21,9 +21,11 @@ class EmailConfig:
     from_address: str
     subject_prefix: str
     interval_hours: int
+    smtp_mode: str
     smtp_host: str
     smtp_port: int
     smtp_use_tls: bool
+    smtp_auth: bool
     history_days: int
 
     @classmethod
@@ -36,9 +38,7 @@ class EmailConfig:
         elif env_on in {"1", "true", "yes"}:
             enabled = True
         recipient = os.environ.get("WEEKLY_EMAIL_TO", raw.get("recipient", "shashankcse@gmail.com")).strip()
-        from_addr = os.environ.get("WEEKLY_EMAIL_FROM", raw.get("from_address", "")).strip()
-        if not from_addr:
-            from_addr = os.environ.get("SMTP_USER", recipient)
+        smtp_mode = os.environ.get("SMTP_MODE", raw.get("smtp_mode", "local")).strip().lower()
         interval_hours = raw.get("interval_hours")
         if interval_hours is None and raw.get("interval_days") is not None:
             interval_hours = int(raw["interval_days"]) * 24
@@ -48,16 +48,45 @@ class EmailConfig:
                 os.environ.get("WEEKLY_EMAIL_INTERVAL_HOURS", interval_hours or 2),
             )
         )
+
+        if smtp_mode == "local":
+            smtp_host = os.environ.get("SMTP_HOST", raw.get("smtp_host", "127.0.0.1"))
+            smtp_port = int(os.environ.get("SMTP_PORT", raw.get("smtp_port", 25)))
+            smtp_use_tls = False
+            smtp_auth = False
+        else:
+            smtp_host = os.environ.get("SMTP_HOST", raw.get("smtp_host", "smtp.gmail.com"))
+            smtp_port = int(os.environ.get("SMTP_PORT", raw.get("smtp_port", 587)))
+            smtp_use_tls = str(os.environ.get("SMTP_USE_TLS", raw.get("smtp_use_tls", True))).lower() not in {
+                "0",
+                "false",
+                "no",
+            }
+            smtp_auth = str(os.environ.get("SMTP_AUTH", raw.get("smtp_auth", True))).lower() not in {
+                "0",
+                "false",
+                "no",
+            }
+
+        from_addr = os.environ.get("WEEKLY_EMAIL_FROM", raw.get("from_address", "")).strip()
+        if not from_addr:
+            from_addr = os.environ.get("SMTP_FROM", "").strip()
+        if not from_addr:
+            from_addr = os.environ.get("SMTP_USER", "").strip()
+        if not from_addr:
+            from_addr = "gateway-agent@localhost" if smtp_mode == "local" else recipient
+
         return cls(
             enabled=enabled,
             recipient=recipient,
             from_address=from_addr,
             subject_prefix=raw.get("subject_prefix", "[Gateway Agent]"),
             interval_hours=max(1, interval_hours),
-            smtp_host=os.environ.get("SMTP_HOST", raw.get("smtp_host", "smtp.gmail.com")),
-            smtp_port=int(os.environ.get("SMTP_PORT", raw.get("smtp_port", 587))),
-            smtp_use_tls=str(os.environ.get("SMTP_USE_TLS", raw.get("smtp_use_tls", True))).lower()
-            not in {"0", "false", "no"},
+            smtp_mode=smtp_mode,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            smtp_use_tls=smtp_use_tls,
+            smtp_auth=smtp_auth,
             history_days=int(os.environ.get("WEEKLY_EMAIL_HISTORY_DAYS", raw.get("history_days", 1))),
         )
 

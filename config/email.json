@@ -1,12 +1,14 @@
 {
-  "version": 2,
+  "version": 3,
   "enabled": true,
   "recipient": "shashankcse@gmail.com",
-  "from_address": "",
+  "from_address": "gateway-agent@localhost",
   "subject_prefix": "[Gateway Agent]",
   "interval_hours": 2,
-  "smtp_host": "smtp.gmail.com",
-  "smtp_port": 587,
-  "smtp_use_tls": true,
+  "smtp_mode": "local",
+  "smtp_host": "127.0.0.1",
+  "smtp_port": 25,
+  "smtp_use_tls": false,
+  "smtp_auth": false,
   "history_days": 1
 }

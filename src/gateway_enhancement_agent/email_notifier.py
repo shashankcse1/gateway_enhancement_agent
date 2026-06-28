@@ -9,7 +9,6 @@ import ssl
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from pathlib import Path
 from typing import Any
 
 from gateway_enhancement_agent.config import runtime_dir
@@ -60,10 +59,10 @@ class EmailNotifier:
 
         smtp_user = os.environ.get("SMTP_USER", "").strip()
         smtp_password = os.environ.get("SMTP_PASSWORD", "").strip()
-        if not smtp_user or not smtp_password:
+        if self.config.smtp_auth and (not smtp_user or not smtp_password):
             msg = (
                 "SMTP credentials missing. Set SMTP_USER and SMTP_PASSWORD in .env "
-                "(Gmail: use an app password)."
+                "(or use SMTP_MODE=local for macOS Postfix on 127.0.0.1:25)."
             )
             self.save_state({**self.load_state(), "last_error": msg})
             return {"sent": False, "error": msg, "summary": summary}
@@ -79,13 +78,23 @@ class EmailNotifier:
             sent_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             report_path = runtime_dir() / f"weekly_summary_{sent_at[:10]}.md"
             report_path.write_text(body, encoding="utf-8")
-            self.save_state({"last_sent_at": sent_at, "last_error": None, "last_recipient": recipient})
+            self.save_state(
+                {
+                    "last_sent_at": sent_at,
+                    "last_error": None,
+                    "last_recipient": recipient,
+                    "smtp_mode": self.config.smtp_mode,
+                    "smtp_host": self.config.smtp_host,
+                }
+            )
             return {
                 "sent": True,
                 "recipient": recipient,
                 "subject": subject,
                 "sent_at": sent_at,
                 "report_path": str(report_path),
+                "smtp_mode": self.config.smtp_mode,
+                "smtp_host": self.config.smtp_host,
             }
         except Exception as exc:  # noqa: BLE001
             self.save_state({**self.load_state(), "last_error": str(exc)})
@@ -102,15 +111,16 @@ class EmailNotifier:
     ) -> None:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = self.config.from_address or smtp_user
+        msg["From"] = self.config.from_address
         msg["To"] = recipient
         msg.attach(MIMEText(body, "plain", "utf-8"))
 
-        context = ssl.create_default_context()
         with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port, timeout=60) as server:
             if self.config.smtp_use_tls:
+                context = ssl.create_default_context()
                 server.starttls(context=context)
-            server.login(smtp_user, smtp_password)
+            if self.config.smtp_auth:
+                server.login(smtp_user, smtp_password)
             server.sendmail(msg["From"], [recipient], msg.as_string())
 
 
