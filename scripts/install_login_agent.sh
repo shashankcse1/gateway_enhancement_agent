@@ -34,6 +34,16 @@ if [[ -z "$TARGET" ]]; then
   exit 1
 fi
 
+SOURCE_TARGET="${TARGET}"
+AGENT_TARGET="${TARGET}"
+if [[ "${AGENT_USE_APP_SUPPORT_CLONE:-1}" == "1" ]] && [[ "${TARGET}" == *"Desktop"* ]]; then
+  echo "Setting up Application Support clone (Desktop TCC bypass)..."
+  bash "${ROOT}/scripts/setup_target_clone.sh" "${SOURCE_TARGET}" "${SUPPORT}/target-clone"
+  AGENT_TARGET="${SUPPORT}/target-clone"
+fi
+
+bash "${ROOT}/scripts/allocate_mac_permissions.sh" || true
+
 python3 -m pip install --user -e ".[dev]" -q 2>/dev/null || true
 
 # Space-free symlink so launchd PYTHONPATH is reliable.
@@ -47,10 +57,10 @@ echo "Syncing governance mirror for launchd (Desktop-safe read)..."
 MIRROR="${SUPPORT}/target-mirror"
 mkdir -p "${MIRROR}/backend/docs/governance" "${MIRROR}/backend/app/routers" "${SUPPORT}/config"
 cp -Rf "${ROOT}/config/." "${SUPPORT}/config/"
-if [[ -d "${TARGET}/backend" ]]; then
-  cp -f "${TARGET}/backend/docs/governance/"*.md "${MIRROR}/backend/docs/governance/" 2>/dev/null || true
-  cp -f "${TARGET}/backend/AGENTS.md" "${MIRROR}/backend/" 2>/dev/null || true
-  cp -f "${TARGET}/backend/app/routers/gateway.py" "${MIRROR}/backend/app/routers/" 2>/dev/null || true
+if [[ -d "${SOURCE_TARGET}/backend" ]]; then
+  cp -f "${SOURCE_TARGET}/backend/docs/governance/"*.md "${MIRROR}/backend/docs/governance/" 2>/dev/null || true
+  cp -f "${SOURCE_TARGET}/backend/AGENTS.md" "${MIRROR}/backend/" 2>/dev/null || true
+  cp -f "${SOURCE_TARGET}/backend/app/routers/gateway.py" "${MIRROR}/backend/app/routers/" 2>/dev/null || true
 fi
 python3 -m pip install --target "${SUPPORT}/pylibs" "${ROOT}" -q --upgrade
 
@@ -66,7 +76,8 @@ set -euo pipefail
 export AGENT_SOURCE_ROOT="${SRC_LINK}"
 export AGENT_DATA_DIR="${SUPPORT}"
 export PYTHONPATH="${SUPPORT}/pylibs:${SRC_LINK}/src"
-export TARGET_REPO="${TARGET}"
+export TARGET_REPO="${AGENT_TARGET}"
+export TARGET_REPO_SOURCE="${SOURCE_TARGET}"
 export TARGET_REPO_MIRROR="${SUPPORT}/target-mirror"
 export LOOP_INTERVAL_SECONDS="${INTERVAL}"
 export AGENT_CONFIG_DIR="${SUPPORT}/config"
@@ -126,7 +137,8 @@ echo "Login agent installed — starts on every Mac login and auto-restarts."
 echo "  Data dir:    ${SUPPORT}"
 echo "  Source link: ${SRC_LINK} -> ${ROOT}"
 echo "  Python:      ${PYTHON_BIN}"
-echo "  TARGET_REPO: ${TARGET}"
+echo "  TARGET_REPO: ${AGENT_TARGET}"
+echo "  Source repo: ${SOURCE_TARGET}"
 echo "  Interval:    ${INTERVAL}s"
 echo ""
 echo "  make agent-status"

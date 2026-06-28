@@ -11,6 +11,7 @@ from gateway_enhancement_agent.file_blocks import apply_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
+from gateway_enhancement_agent.repo_access import read_repo_file
 
 
 @dataclass
@@ -206,10 +207,9 @@ Implement the smallest correct slice for this gap. Output complete files to crea
         paths = self._context_paths(repo, gap)
         chunks: list[str] = []
         for rel in paths[: self.config.max_context_files]:
-            full = repo / rel
-            if not full.is_file():
+            text = read_repo_file(rel)
+            if not text:
                 continue
-            text = full.read_text(encoding="utf-8", errors="replace")
             if len(text) > self.config.max_file_chars:
                 text = text[: self.config.max_file_chars] + "\n... [truncated]"
             chunks.append(f"### `{rel}`\n```\n{text}\n```")

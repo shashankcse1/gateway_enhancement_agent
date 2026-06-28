@@ -97,3 +97,12 @@ send-weekly-report:
 
 weekly-email-install:
 	bash ./scripts/install_weekly_email.sh
+
+setup-clone:
+	bash ./scripts/setup_target_clone.sh "$${TARGET_REPO}" "$${HOME}/Library/Application Support/gateway-enhancement-agent/target-clone"
+
+allocate-permissions:
+	bash ./scripts/allocate_mac_permissions.sh
+
+setup-bitbucket:
+	bash ./scripts/allocate_mac_permissions.sh

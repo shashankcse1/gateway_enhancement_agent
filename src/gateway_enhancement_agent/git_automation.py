@@ -20,6 +20,7 @@ class AutonomousConfig:
     branch_prefix: str
     rollback_on_validation_failure: bool
     exclude_paths: list[str]
+    push_remotes: list[str]
 
     @classmethod
     def from_env(cls) -> AutonomousConfig:
@@ -37,6 +38,10 @@ class AutonomousConfig:
         elif push_env in {"0", "false", "no"}:
             auto_push = False
         merge_branch = os.environ.get("AGENT_MERGE_BRANCH", raw.get("merge_branch", "")).strip()
+        push_remotes = list(raw.get("push_remotes", ["bitbucket", "origin"]))
+        env_remotes = os.environ.get("GIT_PUSH_REMOTES", "").strip()
+        if env_remotes:
+            push_remotes = [r.strip() for r in env_remotes.split(",") if r.strip()]
         return cls(
             enabled=enabled,
             auto_push=auto_push,
@@ -44,6 +49,7 @@ class AutonomousConfig:
             branch_prefix=raw.get("branch_prefix", "agent/cycle-"),
             rollback_on_validation_failure=bool(raw.get("rollback_on_validation_failure", True)),
             exclude_paths=list(raw.get("exclude_paths", [])),
+            push_remotes=push_remotes,
         )
 
 
@@ -112,11 +118,27 @@ class GitAutomator:
             self._run("git", "merge", "--no-edit", feature_branch)
             pushed = False
             push_ref = None
+            push_errors: list[str] = []
             if self.config.auto_push:
-                self._run("git", "push", "origin", feature_branch)
-                self._run("git", "push", "origin", merge_branch)
-                pushed = True
-                push_ref = merge_branch
+                for remote in self.config.push_remotes:
+                    try:
+                        self._run("git", "push", remote, feature_branch)
+                        self._run("git", "push", remote, merge_branch)
+                    except GitCommandError as exc:
+                        push_errors.append(f"{remote}: {exc}")
+                pushed = not push_errors
+                push_ref = merge_branch if pushed else None
+            if push_errors and not pushed:
+                return MergeResult(
+                    attempted=True,
+                    succeeded=False,
+                    commit_sha=commit_sha,
+                    feature_branch=feature_branch,
+                    merge_branch=merge_branch,
+                    pushed=False,
+                    files_committed=staged,
+                    error="; ".join(push_errors),
+                )
             return MergeResult(
                 attempted=True,
                 succeeded=True,
