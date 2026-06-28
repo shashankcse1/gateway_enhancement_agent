@@ -66,19 +66,24 @@ python3 -m pip install --target "${SUPPORT}/pylibs" "${ROOT}" -q --upgrade
 
 ENV_DEST="${SUPPORT}/.env"
 if [[ -f .env ]]; then
-  cp -f .env "${ENV_DEST}"
+  grep -v '^TARGET_REPO=' .env | grep -v '^BITBUCKET_' >"${ENV_DEST}" || true
+  {
+    echo "GIT_PUSH_REMOTES=origin"
+    echo "AGENT_USE_APP_SUPPORT_CLONE=1"
+    echo "TARGET_REPO_SOURCE=${SOURCE_TARGET}"
+  } >>"${ENV_DEST}"
   chmod 600 "${ENV_DEST}"
 fi
 
 cat >"${SUPPORT}/run_loop.sh" <<SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
+AGENT_TARGET="${AGENT_TARGET}"
+SOURCE_TARGET="${SOURCE_TARGET}"
+SUPPORT="${SUPPORT}"
 export AGENT_SOURCE_ROOT="${SRC_LINK}"
 export AGENT_DATA_DIR="${SUPPORT}"
 export PYTHONPATH="${SUPPORT}/pylibs:${SRC_LINK}/src"
-export TARGET_REPO="${AGENT_TARGET}"
-export TARGET_REPO_SOURCE="${SOURCE_TARGET}"
-export TARGET_REPO_MIRROR="${SUPPORT}/target-mirror"
 export LOOP_INTERVAL_SECONDS="${INTERVAL}"
 export AGENT_CONFIG_DIR="${SUPPORT}/config"
 export AGENT_BACKGROUND_MODE="1"
@@ -92,6 +97,12 @@ export AGENT_MERGE_BRANCH="${AGENT_MERGE_BRANCH:-}"
 export WEEKLY_EMAIL_TO="${WEEKLY_EMAIL_TO:-shashankcse@gmail.com}"
 export WEEKLY_EMAIL_ENABLED="${WEEKLY_EMAIL_ENABLED:-1}"
 if [[ -f "${SUPPORT}/.env" ]]; then set -a; source "${SUPPORT}/.env"; set +a; fi
+export TARGET_REPO="\${AGENT_TARGET}"
+export TARGET_REPO_SOURCE="\${SOURCE_TARGET}"
+export TARGET_REPO_MIRROR="${SUPPORT}/target-mirror"
+export AGENT_CONFIG_DIR="${SUPPORT}/config"
+export GIT_PUSH_REMOTES="\${GIT_PUSH_REMOTES:-origin}"
+export AGENT_BACKGROUND_MODE="1"
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"
 SCRIPT

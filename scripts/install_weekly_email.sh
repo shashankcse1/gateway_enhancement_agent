@@ -24,7 +24,8 @@ INTERVAL_SECONDS=$((EMAIL_INTERVAL_HOURS * 3600))
 PYTHON_BIN="$(PYTHONPATH="${SRC_LINK}/src" python3 -c "import sys; print(sys.executable)" 2>/dev/null || echo python3)"
 
 if [[ -f .env ]]; then
-  cp -f .env "${SUPPORT}/.env"
+  cp -f .env "${SUPPORT}/.env.launchd" 2>/dev/null || true
+  grep -v '^TARGET_REPO=' .env | grep -v '^BITBUCKET_' >"${SUPPORT}/.env" || true
   chmod 600 "${SUPPORT}/.env"
 fi
 
@@ -36,6 +37,7 @@ export AGENT_DATA_DIR="${SUPPORT}"
 export PYTHONPATH="${SUPPORT}/pylibs:${SRC_LINK}/src"
 export AGENT_CONFIG_DIR="${SUPPORT}/config"
 if [[ -f "${SUPPORT}/.env" ]]; then set -a; source "${SUPPORT}/.env"; set +a; fi
+export AGENT_CONFIG_DIR="${SUPPORT}/config"
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent send-weekly-report --force
 SCRIPT

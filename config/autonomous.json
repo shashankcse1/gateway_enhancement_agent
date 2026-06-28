@@ -2,7 +2,7 @@
   "version": 2,
   "enabled": true,
   "auto_push": true,
-  "push_remotes": ["bitbucket", "origin"],
+  "push_remotes": ["origin"],
   "merge_branch": "",
   "branch_prefix": "agent/cycle-",
   "rollback_on_validation_failure": true,

@@ -38,7 +38,7 @@ class AutonomousConfig:
         elif push_env in {"0", "false", "no"}:
             auto_push = False
         merge_branch = os.environ.get("AGENT_MERGE_BRANCH", raw.get("merge_branch", "")).strip()
-        push_remotes = list(raw.get("push_remotes", ["bitbucket", "origin"]))
+        push_remotes = list(raw.get("push_remotes", ["origin"]))
         env_remotes = os.environ.get("GIT_PUSH_REMOTES", "").strip()
         if env_remotes:
             push_remotes = [r.strip() for r in env_remotes.split(",") if r.strip()]

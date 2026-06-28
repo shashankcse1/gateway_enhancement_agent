@@ -101,8 +101,11 @@ weekly-email-install:
 setup-clone:
 	bash ./scripts/setup_target_clone.sh "$${TARGET_REPO}" "$${HOME}/Library/Application Support/gateway-enhancement-agent/target-clone"
 
+fix-permissions:
+	bash ./scripts/fix_all_permissions.sh
+
 allocate-permissions:
 	bash ./scripts/allocate_mac_permissions.sh
 
 setup-bitbucket:
-	bash ./scripts/allocate_mac_permissions.sh
+	@echo "GitHub only — use: git push origin main"
