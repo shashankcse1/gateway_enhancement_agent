@@ -19,6 +19,11 @@ fi
 
 PYTHON_BIN="$(PYTHONPATH="${SRC_LINK}/src" python3 -c "import sys; print(sys.executable)" 2>/dev/null || echo python3)"
 
+if [[ -f .env ]]; then
+  cp -f .env "${SUPPORT}/.env"
+  chmod 600 "${SUPPORT}/.env"
+fi
+
 cat >"${SUPPORT}/run_weekly_email.sh" <<SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
@@ -26,7 +31,7 @@ export AGENT_SOURCE_ROOT="${SRC_LINK}"
 export AGENT_DATA_DIR="${SUPPORT}"
 export PYTHONPATH="${SUPPORT}/pylibs:${SRC_LINK}/src"
 export AGENT_CONFIG_DIR="${SUPPORT}/config"
-if [[ -f "${ROOT}/.env" ]]; then set -a; source "${ROOT}/.env"; set +a; fi
+if [[ -f "${SUPPORT}/.env" ]]; then set -a; source "${SUPPORT}/.env"; set +a; fi
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent send-weekly-report --force
 SCRIPT

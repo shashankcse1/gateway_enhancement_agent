@@ -54,6 +54,12 @@ if [[ -d "${TARGET}/backend" ]]; then
 fi
 python3 -m pip install --target "${SUPPORT}/pylibs" "${ROOT}" -q --upgrade
 
+ENV_DEST="${SUPPORT}/.env"
+if [[ -f .env ]]; then
+  cp -f .env "${ENV_DEST}"
+  chmod 600 "${ENV_DEST}"
+fi
+
 cat >"${SUPPORT}/run_loop.sh" <<SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
@@ -74,7 +80,7 @@ export AGENT_AUTO_PUSH="${AGENT_AUTO_PUSH:-1}"
 export AGENT_MERGE_BRANCH="${AGENT_MERGE_BRANCH:-}"
 export WEEKLY_EMAIL_TO="${WEEKLY_EMAIL_TO:-shashankcse@gmail.com}"
 export WEEKLY_EMAIL_ENABLED="${WEEKLY_EMAIL_ENABLED:-1}"
-if [[ -f "${ROOT}/.env" ]]; then set -a; source "${ROOT}/.env"; set +a; fi
+if [[ -f "${SUPPORT}/.env" ]]; then set -a; source "${SUPPORT}/.env"; set +a; fi
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"
 SCRIPT
