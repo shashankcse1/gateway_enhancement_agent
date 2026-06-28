@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "scope": "agents_only",
+  "description": "Ollama for implement/review/synthesizer subagents. Web research uses local free-source extraction (see competitor_research.json).",
   "provider": "ollama",
   "base_url": "http://127.0.0.1:11434",
   "model": "qwen2.5-coder:7b",

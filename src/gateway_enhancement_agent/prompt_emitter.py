@@ -32,10 +32,26 @@ def build_design_brief(gap: GapItem, cycle_id: int) -> str:
 
 ## Role-lens checklist (from backend/AGENTS.md)
 
-- [ ] Security Architect — authz, least privilege, threat boundaries
-- [ ] Audit Architect — allow/deny audit evidence on mutations
-- [ ] CISO — blast radius and residual risk
-- [ ] Security Engineer — abuse-case tests for changed surfaces
+- [ ] **Security Architect** — authz, least privilege, threat boundaries, token lifecycle
+- [ ] **Audit Architect** — mutation audit, deny-path evidence, traceability
+- [ ] **CISO** — blast radius, residual risk, go/no-go
+- [ ] **AWS Engineer** — IAM least privilege, STS boundaries, secret posture
+- [ ] **Cloud Engineer** — deployability, rollback, observability, rate limits
+- [ ] **AI Architect** — model routing, fallback strategy, responsible-AI controls
+- [ ] **Frontend UI Expert** — accessibility, operator UX, error paths
+- [ ] **Security Engineer Expert** — abuse-case tests, input validation, hardening
+
+## Component-driven architecture
+
+- Extend the **owning component** first (see `config/components.json` in the agent repo).
+- Keep changes within component path boundaries; avoid cross-component drive-by edits.
+- UI: use existing console partials; backend: router + focused service module + tests in one slice.
+
+## Microservices guidance
+
+- **Default:** enhance the gateway monolith until `components.json` `microservice_triggers` apply.
+- **Extract only when:** independent scaling, blast-radius isolation, or stable API boundary is documented in governance.
+- **Never extract without:** observability, rollback, dual-approval parity, and API inventory entry for the new service contract.
 
 ## Constraints (mandatory)
 
@@ -108,6 +124,17 @@ def build_implementation_report(gap: GapItem, cycle_id: int, result) -> str:
     else:
         status = f"Failed — {result.error or result.skipped_reason or 'no files written'}"
     files = "\n".join(f"- `{f}`" for f in result.files_written) or "- _(none)_"
+    mode = getattr(result, "implementation_mode", "single")
+    parallel_lines = ""
+    if mode == "parallel":
+        parallel_lines = (
+            f"\n## Parallel subagents\n\n"
+            f"- Mode: **parallel**\n"
+            f"- Workers run: **{getattr(result, 'subagents_run', 0)}**\n"
+            f"- Workers succeeded: **{getattr(result, 'subagents_succeeded', 0)}**\n"
+            f"- Synthesizer merge: **{'yes' if getattr(result, 'synthesizer_used', False) else 'no'}**\n"
+            f"- Artifacts: `artifacts/cycle-{cycle_id:04d}/subagents/`, `parallel_merge.md`\n"
+        )
     return f"""# Local Implementation Report — Cycle {cycle_id:04d}
 
 ## Gap
@@ -125,7 +152,7 @@ def build_implementation_report(gap: GapItem, cycle_id: int, result) -> str:
 ## Files written
 
 {files}
-
+{parallel_lines}
 ## Next steps
 
 1. Review diffs in TARGET_REPO before merge.

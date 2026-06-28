@@ -5,6 +5,13 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _test_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_FULLY_AUTONOMOUS", "0")
+    monkeypatch.setenv("WEEKLY_EMAIL_ENABLED", "0")
+    monkeypatch.setenv("COMPETITOR_WEB_RESEARCH", "0")
+
+
 @pytest.fixture
 def mock_target_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     backend = tmp_path / "backend"

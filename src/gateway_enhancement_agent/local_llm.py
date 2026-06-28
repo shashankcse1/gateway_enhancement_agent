@@ -1,4 +1,4 @@
-"""Local LLM client (Ollama) — uses system CPU/GPU via Metal on Apple Silicon."""
+"""Ollama client for implement/review/synthesizer agents (not web research)."""
 
 from __future__ import annotations
 
@@ -137,7 +137,6 @@ class LocalLLMClient:
         for name in candidates:
             if name in available:
                 return name
-            # Ollama tags may omit :latest
             base = name.split(":")[0]
             for tag in available:
                 if tag.split(":")[0] == base:

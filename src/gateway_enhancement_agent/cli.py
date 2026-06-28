@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
 from gateway_enhancement_agent.backlog import BacklogStore
 from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
+from gateway_enhancement_agent.competitor_web_research import CompetitorWebResearcher, maybe_refresh_competitor_research
+from gateway_enhancement_agent.email_notifier import EmailNotifier
+from gateway_enhancement_agent.weekly_summary import build_weekly_summary, weekly_summary_markdown
 from gateway_enhancement_agent.config import source_root
 from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
-from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
+from gateway_enhancement_agent.llm_client import LLMClient, LLMConfig
 from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.mirror_sync import sync_mirror
 from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
@@ -51,14 +55,29 @@ def cmd_status(_: argparse.Namespace) -> int:
 
 
 def cmd_discover(_: argparse.Namespace) -> int:
+    research = maybe_refresh_competitor_research()
+    if research.get("refreshed"):
+        print(f"Web research refreshed: {research.get('web_capabilities_found', 0)} capabilities")
     inv = TargetInventory().snapshot()
     comp = CompetitorRegistry().snapshot()
     print("=== Target inventory ===")
     print(f"Gateway routes: {inv['gateway_route_count']}")
     print(f"Partial/Gap endpoints: {inv['partial_gap_count']}")
     print(f"Gateway tests: {', '.join(inv['gateway_test_files']) or 'none'}")
-    print("=== Competitors (local) ===")
-    print(f"Profiles: {comp['competitor_count']} capabilities: {comp['capability_count']}")
+    print("=== Competitors (config + web cache) ===")
+    print(f"Profiles: {comp['competitor_count']} capabilities: {comp['capability_count']} (web: {comp.get('web_capability_count', 0)})")
+    if comp.get("web_research_updated_at"):
+        print(f"Web research cache: {comp['web_research_updated_at']}")
+    return 0
+
+
+def cmd_research_competitors(args: argparse.Namespace) -> int:
+    result = CompetitorWebResearcher().refresh(force=args.force)
+    print(json.dumps(result, indent=2))
+    if result.get("refreshed"):
+        print("\n" + CompetitorWebResearcher().report_markdown())
+        return 0
+    print(f"Skipped: {result.get('skipped', 'unknown')}")
     return 0
 
 
@@ -153,6 +172,24 @@ def cmd_llm_status(_: argparse.Namespace) -> int:
     return 0 if health.reachable and health.model_available else 1
 
 
+def cmd_weekly_report(_: argparse.Namespace) -> int:
+    summary = build_weekly_summary()
+    print(weekly_summary_markdown(summary))
+    return 0
+
+
+def cmd_send_weekly_report(args: argparse.Namespace) -> int:
+    result = EmailNotifier().send_weekly_report(force=args.force)
+    if result.get("sent"):
+        print(f"Sent to {result['recipient']}: {result['subject']}")
+        return 0
+    if result.get("skipped"):
+        print(f"Skipped: {result['skipped']}")
+        return 0
+    print(f"Failed: {result.get('error', 'unknown error')}", file=sys.stderr)
+    return 1
+
+
 def cmd_design(_: argparse.Namespace) -> int:
     design = source_root() / "docs" / "DESIGN.md"
     if design.exists():
@@ -171,12 +208,19 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="Show loop state and target repo").set_defaults(func=cmd_status)
-    sub.add_parser("discover", help="Print inventory and competitor snapshot").set_defaults(func=cmd_discover)
+    sub.add_parser("discover", help="Refresh web competitor research + print inventory").set_defaults(func=cmd_discover)
+    research_p = sub.add_parser("research-competitors", help="Fetch competitor docs from web and extract capabilities")
+    research_p.add_argument("--force", action="store_true", help="Ignore cache TTL and refetch")
+    research_p.set_defaults(func=cmd_research_competitors)
     sub.add_parser("analyze", help="Print gap matrix").set_defaults(func=cmd_analyze)
     sub.add_parser("coverage", help="Print competitor capability coverage").set_defaults(func=cmd_coverage)
     sub.add_parser("backlog", help="Print enhancement backlog").set_defaults(func=cmd_backlog)
     sub.add_parser("sync-mirror", help="Sync governance mirror from TARGET_REPO").set_defaults(func=cmd_sync_mirror)
     sub.add_parser("llm-status", help="Check local Ollama model availability").set_defaults(func=cmd_llm_status)
+    sub.add_parser("weekly-report", help="Print weekly gateway summary").set_defaults(func=cmd_weekly_report)
+    send_weekly = sub.add_parser("send-weekly-report", help="Email weekly gateway summary")
+    send_weekly.add_argument("--force", action="store_true", help="Send even if interval not elapsed")
+    send_weekly.set_defaults(func=cmd_send_weekly_report)
     sub.add_parser("design", help="Print architecture design document").set_defaults(func=cmd_design)
 
     run_p = sub.add_parser("run", help="Run one full SDLC cycle")

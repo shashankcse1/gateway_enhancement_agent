@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "enabled": true,
+  "auto_push": true,
+  "merge_branch": "",
+  "branch_prefix": "agent/cycle-",
+  "rollback_on_validation_failure": true,
+  "exclude_paths": [".env", ".runtime/", "artifacts/", "archive/"]
+}

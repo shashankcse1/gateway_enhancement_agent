@@ -19,7 +19,7 @@
     {
       "id": "implement",
       "label": "Implement",
-      "description": "Apply code changes in TARGET_REPO using local Ollama (CPU/GPU on this Mac)."
+      "description": "Run parallel local-LLM subagents (backend, tests, UI, docs) then synthesizer merge into TARGET_REPO."
     },
     {
       "id": "validate",

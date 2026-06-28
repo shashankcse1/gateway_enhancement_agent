@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import re
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import target_repo
+from gateway_enhancement_agent.file_blocks import apply_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
-
-
-FILE_BLOCK_RE = re.compile(
-    r"```(?:file:?|path:?)\s*([^\n`]+)\n([\s\S]*?)```",
-    re.IGNORECASE,
-)
+from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
 
 
 @dataclass
@@ -26,12 +22,25 @@ class ImplementResult:
     skipped_reason: str | None = None
     error: str | None = None
     llm_response_path: str | None = None
+    implementation_mode: str = "single"
+    subagents_run: int = 0
+    subagents_succeeded: int = 0
+    synthesizer_used: bool = False
 
 
 class CodeImplementer:
+    FILE_BLOCK_INSTRUCTION = (
+        "Respond ONLY with one or more file blocks in this exact format:\n"
+        "```file:backend/path/to/file.py\n"
+        "<full file contents>\n"
+        "```\n"
+        "Use paths relative to the repository root. Do not include secrets or .env files."
+    )
+
     def __init__(self, config: LLMConfig | None = None, client: LocalLLMClient | None = None) -> None:
         self.config = config or LLMConfig.from_env()
         self.client = client or LocalLLMClient(self.config)
+        self.parallel_config = ParallelConfig.from_env()
 
     def implement(
         self,
@@ -61,17 +70,91 @@ class CodeImplementer:
                 skipped_reason=f"Model not installed. Run: ollama pull {self.config.model}",
             )
 
+        if self.parallel_config.enabled:
+            return self._implement_parallel(gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model)
+        return self._implement_single(gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model)
+
+    def _implement_parallel(
+        self,
+        gap: GapItem,
+        *,
+        cycle_id: int,
+        design_brief: str,
+        artifact_dir: Path,
+        model: str,
+    ) -> ImplementResult:
+        repo = target_repo()
+        context = self._build_context(repo, gap)
+        try:
+            parallel = ParallelOrchestrator(self.config, self.parallel_config, self.client).run(
+                gap=gap,
+                cycle_id=cycle_id,
+                design_brief=design_brief,
+                shared_context=context,
+                artifact_dir=artifact_dir,
+            )
+            if parallel.guardrail_result and not parallel.guardrail_result.passed:
+                return ImplementResult(
+                    attempted=True,
+                    succeeded=False,
+                    model=model,
+                    implementation_mode="parallel",
+                    error="Security guardrails blocked apply: " + "; ".join(parallel.guardrail_result.violations),
+                )
+            if parallel.review_guardrail_result and not parallel.review_guardrail_result.passed:
+                return ImplementResult(
+                    attempted=True,
+                    succeeded=False,
+                    model=model,
+                    implementation_mode="parallel",
+                    error="Role-lens BLOCKER: " + "; ".join(parallel.review_guardrail_result.violations),
+                )
+            llm_path = artifact_dir / "local_llm_response.md"
+            llm_path.write_text(parallel.merged_response, encoding="utf-8")
+            files_written = apply_file_blocks(
+                repo,
+                parallel.merged_response,
+                allowed_prefixes=self.config.allowed_path_prefixes,
+            )
+            succeeded = bool(files_written)
+            return ImplementResult(
+                attempted=True,
+                succeeded=succeeded,
+                model=model,
+                files_written=files_written,
+                llm_response_path=str(llm_path.name),
+                implementation_mode="parallel",
+                subagents_run=len(parallel.subagents),
+                subagents_succeeded=sum(1 for s in parallel.subagents if s.succeeded),
+                synthesizer_used=parallel.synthesizer_used,
+                skipped_reason=None if succeeded else (parallel.error or "Merge produced no applicable files"),
+                error=parallel.error if not succeeded else None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ImplementResult(
+                attempted=True,
+                succeeded=False,
+                model=model,
+                implementation_mode="parallel",
+                error=str(exc),
+            )
+
+    def _implement_single(
+        self,
+        gap: GapItem,
+        *,
+        cycle_id: int,
+        design_brief: str,
+        artifact_dir: Path,
+        model: str,
+    ) -> ImplementResult:
         repo = target_repo()
         context = self._build_context(repo, gap)
         system = (
             "You are a senior gateway platform engineer. "
             "Implement minimal, correct code changes in the target repository. "
             "Follow security, audit, and least-privilege rules from AGENTS.md. "
-            "Respond ONLY with one or more file blocks in this exact format:\n"
-            "```file:backend/path/to/file.py\n"
-            "<full file contents>\n"
-            "```\n"
-            "Use paths relative to the repository root. Do not include secrets or .env files."
+            + self.FILE_BLOCK_INSTRUCTION
         )
         user = f"""# Implementation task — cycle {cycle_id:04d}
 
@@ -92,25 +175,30 @@ Target root: {repo}
 
 Implement the smallest correct slice for this gap. Output complete files to create or replace.
 """
-
         try:
             response = self.client.chat(system=system, user=user)
             llm_path = artifact_dir / "local_llm_response.md"
             llm_path.write_text(response, encoding="utf-8")
-            files_written = self._apply_file_blocks(repo, response)
+            files_written = apply_file_blocks(
+                repo,
+                response,
+                allowed_prefixes=self.config.allowed_path_prefixes,
+            )
             return ImplementResult(
                 attempted=True,
                 succeeded=bool(files_written),
-                model=health.model,
+                model=model,
                 files_written=files_written,
-                llm_response_path=str(llm_path.relative_to(artifact_dir.parent.parent)),
+                llm_response_path=str(llm_path.name),
+                implementation_mode="single",
                 skipped_reason=None if files_written else "LLM response contained no valid file blocks",
             )
         except Exception as exc:  # noqa: BLE001
             return ImplementResult(
                 attempted=True,
                 succeeded=False,
-                model=health.model,
+                model=model,
+                implementation_mode="single",
                 error=str(exc),
             )
 
@@ -151,23 +239,3 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                 seen.add(rel)
                 ordered.append(rel)
         return ordered
-
-    def _apply_file_blocks(self, repo: Path, response: str) -> list[str]:
-        written: list[str] = []
-        for match in FILE_BLOCK_RE.finditer(response):
-            rel = match.group(1).strip().lstrip("./")
-            content = match.group(2)
-            if not self._allowed_path(rel):
-                continue
-            dest = (repo / rel).resolve()
-            if not str(dest).startswith(str(repo.resolve())):
-                continue
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
-            written.append(rel)
-        return written
-
-    def _allowed_path(self, rel: str) -> bool:
-        if ".." in Path(rel).parts:
-            return False
-        return any(rel.startswith(prefix) for prefix in self.config.allowed_path_prefixes)

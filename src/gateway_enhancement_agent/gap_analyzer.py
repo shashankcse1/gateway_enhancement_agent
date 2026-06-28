@@ -38,8 +38,12 @@ class GapAnalyzer:
     def build_matrix(self) -> list[GapItem]:
         items: list[GapItem] = []
         deferred = self.backlog.deferred_ids()
+        closed = self.backlog.closed_ids()
         inv = self.inventory.parse_inventory_gaps()
         for idx, gap in enumerate(inv):
+            gap_id = f"inv-{idx:03d}"
+            if gap_id in deferred or gap_id in closed:
+                continue
             priority = 1 if gap.coverage.lower() == "gap" else 2
             comp_ids, cap_ids = self._match_capabilities(gap.route)
             score = self._base_score(gap.coverage, priority)
@@ -52,7 +56,7 @@ class GapAnalyzer:
                 score -= 5
             items.append(
                 GapItem(
-                    gap_id=f"inv-{idx:03d}",
+                    gap_id=gap_id,
                     title=f"{gap.method} {gap.route}",
                     source="api_inventory",
                     priority=priority,

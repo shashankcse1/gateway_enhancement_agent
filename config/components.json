@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "description": "Component-driven boundaries for gateway enhancements. Prefer extending a component before introducing microservices.",
+  "components": [
+    {
+      "id": "gateway-router",
+      "label": "Gateway API router",
+      "paths": ["backend/app/routers/gateway.py", "backend/app/services/"],
+      "ownership": "backend_contract",
+      "microservice_candidate": false,
+      "notes": "Core OpenAI-compatible surface; keep monolithic until independent scaling or team boundary is proven."
+    },
+    {
+      "id": "gateway-authz-audit",
+      "label": "Authz and audit",
+      "paths": ["backend/app/middleware/", "backend/app/audit/", "backend/docs/security/"],
+      "ownership": "security_architect",
+      "microservice_candidate": false,
+      "notes": "Cross-cutting; must stay consistent across all routes."
+    },
+    {
+      "id": "gateway-operator-ui",
+      "label": "Control-center UI",
+      "paths": ["frontend/app.js", "frontend/views/"],
+      "ownership": "frontend_ui",
+      "microservice_candidate": false,
+      "notes": "Static operator surface; component partials per console."
+    },
+    {
+      "id": "gateway-governance",
+      "label": "Governance inventory",
+      "paths": ["backend/docs/governance/"],
+      "ownership": "governance_docs",
+      "microservice_candidate": false,
+      "notes": "Source-of-truth docs; required for every slice."
+    },
+    {
+      "id": "gateway-validation",
+      "label": "Validation and smoke",
+      "paths": ["backend/tests/", "backend/scripts/", "frontend/scripts/"],
+      "ownership": "backend_tests",
+      "microservice_candidate": false,
+      "notes": "Quality gates stay colocated with the monolith until service split."
+    },
+    {
+      "id": "gateway-orchestration",
+      "label": "Flow orchestration studio",
+      "paths": ["backend/app/routers/orchestration.py", "frontend/views/orchestration.html"],
+      "ownership": "backend_contract",
+      "microservice_candidate": true,
+      "notes": "Candidate for extraction if workflow engine needs independent deploy cadence or GPU isolation."
+    }
+  ],
+  "microservice_triggers": [
+    "Independent scaling requirement (CPU/GPU/memory) with clear API boundary",
+    "Different release cadence or blast-radius isolation mandated by CISO",
+    "Team ownership split with stable contract already defined in API inventory",
+    "Regulatory boundary requiring separate audit domain"
+  ],
+  "microservice_anti_patterns": [
+    "Splitting before API inventory marks a stable contract",
+    "Extracting without observability, rollback, and dual-approval parity",
+    "Creating network hops for synchronous operator CRUD without caching strategy"
+  ]
+}

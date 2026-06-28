@@ -59,10 +59,35 @@ This project is open source under the [MIT License](../LICENSE). See [DISCLAIMER
 1. **Discover** — route count, test files, API inventory Partial/Gap rows, competitor profiles
 2. **Analyze** — prioritized gap matrix + capability coverage matrix + backlog update
 3. **Design** — brief with competitor context, role-lens checklist, acceptance criteria
-4. **Implement** — `CodeImplementer` calls **local Ollama** (Metal GPU / CPU) to patch TARGET_REPO
+4. **Implement** — parallel subagents (backend / tests / UI / docs) via local Ollama, then synthesizer merge into TARGET_REPO
 5. **Validate** — tiered gates (see `config/agent_self_tests.json`, `config/validation_gates.json`)
 6. **Document** — governance sync checklist
 7. **Release prep** — release decision draft with validation posture
+
+## Parallel implement architecture
+
+```
+                    ┌─────────────────┐
+                    │  design_brief   │
+                    └────────┬────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+  backend_contract    backend_tests      frontend_ui …
+  (Ollama worker)     (Ollama worker)    (Ollama worker)
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │  synthesizer    │  ← merges conflicts
+                    └────────┬────────┘
+                             ▼
+                    apply file blocks → TARGET_REPO
+```
+
+Workers run concurrently via `ThreadPoolExecutor`. Each worker owns a component slice (see `config/components.json`). Implement workers patch files; review workers (Security, Audit, CISO, Cloud) gate the merge. Non-overlapping files are combined directly; overlapping files go to a synthesizer LLM pass. Security guardrails scan merged blocks before apply.
+
+**Full review:** [ARCHITECTURE_BEST_PRACTICES.md](ARCHITECTURE_BEST_PRACTICES.md)
 
 ## Gap prioritization
 
@@ -96,7 +121,10 @@ Install copies package + config to Application Support and syncs governance mirr
 
 ## Security
 
-- No network fetch for competitor data
-- No secrets in artifacts
+- No network fetch for competitor data during gap analysis (uses cached web research from discover phase)
+- Web research fetches **free public competitor docs** only; capabilities extracted via **local rule-based parser** (no Ollama); cached 7 days by default. **Ollama** is reserved for implement/review/synthesizer subagents.
+- No secrets in artifacts; `security_guardrails.json` blocks credential patterns in patches
+- Role-lens review subagents (Security, Audit, CISO, Cloud) must APPROVE before apply
 - TARGET_REPO validation runs locally with operator's existing toolchain
-- Work orders reference `backend/AGENTS.md` role-lens contract
+- Work orders and design briefs reference full `backend/AGENTS.md` eight role lenses
+- Component-driven boundaries limit blast radius per cycle

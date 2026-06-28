@@ -7,8 +7,16 @@ import os
 from gateway_enhancement_agent.backlog import BacklogStore
 from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
+from gateway_enhancement_agent.competitor_web_research import maybe_refresh_competitor_research
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.code_implementer import CodeImplementer
+from gateway_enhancement_agent.git_automation import (
+    GitAutomator,
+    MergeResult,
+    fully_autonomous,
+    merge_report_json,
+    merge_report_markdown,
+)
 from gateway_enhancement_agent.prompt_emitter import (
     build_agent_work_order,
     build_design_brief,
@@ -34,6 +42,14 @@ class SDLCPipeline:
     def run_cycle(self, *, skip_validation: bool = False) -> CycleState:
         repo = TargetInventory().repo
         cycle = self.store.begin_cycle(str(repo))
+        autonomous = fully_autonomous()
+        if autonomous:
+            skip_validation = False
+            try:
+                cycle.metadata["git_start_branch"] = GitAutomator().current_branch()
+            except Exception:  # noqa: BLE001
+                cycle.metadata["git_start_branch"] = "main"
+            self.store.update_cycle(cycle)
 
         try:
             cycle = self._phase_discover(cycle)
@@ -48,11 +64,23 @@ class SDLCPipeline:
             else:
                 cycle.completed_phases.append("validate")
                 cycle.metadata["validation_skipped"] = True
-                cycle.metadata["validation_passed"] = True
+                cycle.metadata["validation_passed"] = False
+            if autonomous:
+                cycle = self._phase_merge(cycle)
             cycle = self._phase_document(cycle)
             cycle = self._phase_release_prep(cycle)
             self._write_cycle_summary(cycle)
-            if not skip_validation and not cycle.metadata.get("validation_passed", True):
+            if autonomous:
+                impl_ok = cycle.metadata.get("local_implementation_succeeded")
+                if not cycle.metadata.get("validation_passed", False):
+                    cycle.status = "failed"
+                elif impl_ok and not cycle.metadata.get("merge_succeeded", False):
+                    cycle.status = "failed"
+                elif cycle.errors:
+                    cycle.status = "failed"
+                else:
+                    cycle.status = "completed"
+            elif not skip_validation and not cycle.metadata.get("validation_passed", True):
                 cycle.status = "failed"
             else:
                 cycle.status = "completed"
@@ -66,6 +94,9 @@ class SDLCPipeline:
 
     def _phase_discover(self, cycle: CycleState) -> CycleState:
         cycle.phase = "discover"
+        research = maybe_refresh_competitor_research()
+        cycle.metadata["competitor_web_research"] = research
+        self.store.write_json(cycle.cycle_id, "competitor_web_research.json", research)
         inv = TargetInventory().snapshot()
         comp = CompetitorRegistry().snapshot()
         self.store.write_json(cycle.cycle_id, "inventory_snapshot.json", inv)
@@ -135,11 +166,17 @@ class SDLCPipeline:
                     "skipped_reason": result.skipped_reason,
                     "error": result.error,
                     "llm_response_path": result.llm_response_path,
+                    "implementation_mode": result.implementation_mode,
+                    "subagents_run": result.subagents_run,
+                    "subagents_succeeded": result.subagents_succeeded,
+                    "synthesizer_used": result.synthesizer_used,
                 },
             )
             cycle.metadata["local_implementation_attempted"] = result.attempted
             cycle.metadata["local_implementation_succeeded"] = result.succeeded
             cycle.metadata["local_implementation_files"] = result.files_written
+            cycle.metadata["implementation_mode"] = result.implementation_mode
+            cycle.metadata["subagents_run"] = result.subagents_run
             if result.skipped_reason:
                 cycle.metadata["local_implementation_skipped"] = result.skipped_reason
             if result.error:
@@ -188,6 +225,63 @@ class SDLCPipeline:
         if not summary["passed"]:
             cycle.errors.append("Agent self-tests failed")
         cycle.completed_phases.append("validate")
+        self.store.update_cycle(cycle)
+        return cycle
+
+    def _phase_merge(self, cycle: CycleState) -> CycleState:
+        cycle.phase = "merge"
+        gap = self._active_gap(cycle)
+        files = list(cycle.metadata.get("local_implementation_files") or [])
+        start_branch = cycle.metadata.get("git_start_branch", "main")
+        automator = GitAutomator()
+
+        if not gap or not files:
+            cycle.metadata["merge_skipped"] = "no gap or no files written"
+            cycle.metadata["merge_succeeded"] = not bool(files)
+            cycle.completed_phases.append("merge")
+            self.store.update_cycle(cycle)
+            return cycle
+
+        if not cycle.metadata.get("validation_passed", False):
+            if automator.config.rollback_on_validation_failure:
+                automator.rollback(files, start_branch)
+                cycle.metadata["merge_rollback"] = True
+            cycle.metadata["merge_succeeded"] = False
+            cycle.metadata["merge_skipped"] = "validation failed"
+            cycle.errors.append("Autonomous merge blocked: validation failed")
+            if gap:
+                self.store.write_text(
+                    cycle.cycle_id,
+                    "merge_report.md",
+                    merge_report_markdown(
+                        MergeResult(attempted=False, succeeded=False, skipped_reason="validation failed"),
+                        gap,
+                        cycle.cycle_id,
+                    ),
+                )
+            cycle.completed_phases.append("merge")
+            self.store.update_cycle(cycle)
+            return cycle
+
+        result = automator.commit_and_merge(
+            gap=gap,
+            cycle_id=cycle.cycle_id,
+            files_written=files,
+            start_branch=start_branch,
+        )
+        cycle.metadata["merge_succeeded"] = result.succeeded
+        cycle.metadata["merge_commit_sha"] = result.commit_sha
+        cycle.metadata["merge_branch"] = result.merge_branch
+        cycle.metadata["merge_pushed"] = result.pushed
+        if result.skipped_reason:
+            cycle.metadata["merge_skipped"] = result.skipped_reason
+        if result.error:
+            cycle.errors.append(f"Autonomous merge: {result.error}")
+        if result.succeeded and gap:
+            self.backlog.mark_closed(gap.gap_id, cycle.cycle_id, commit_sha=result.commit_sha)
+        self.store.write_text(cycle.cycle_id, "merge_report.md", merge_report_markdown(result, gap, cycle.cycle_id))
+        self.store.write_json(cycle.cycle_id, "merge_report.json", merge_report_json(result))
+        cycle.completed_phases.append("merge")
         self.store.update_cycle(cycle)
         return cycle
 

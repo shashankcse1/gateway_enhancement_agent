@@ -34,6 +34,7 @@ def test_sdlc_pipeline_writes_artifacts(mock_target_repo, monkeypatch) -> None:
     from gateway_enhancement_agent.state_store import StateStore
 
     monkeypatch.setenv("LOCAL_LLM_AUTO_IMPLEMENT", "0")
+    monkeypatch.setenv("AGENT_FULLY_AUTONOMOUS", "0")
     store = StateStore()
     cycle = SDLCPipeline(store).run_cycle(skip_validation=True)
     assert cycle.status == "completed"

@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "enabled": true,
+  "extraction_mode": "local",
+  "description": "Free public documentation only. Local rule-based extraction — no Ollama, no paid APIs.",
+  "cache_ttl_hours": 168,
+  "max_pages_per_competitor": 3,
+  "max_chars_per_page": 12000,
+  "user_agent": "GatewayEnhancementAgent/1.0 (free doc research; +https://github.com/shashankcse1/gateway_enhancement_agent)",
+  "allowed_domains": [
+    "docs.litellm.ai",
+    "docs.portkey.ai",
+    "docs.konghq.com",
+    "developer.konghq.com",
+    "docs.helicone.ai"
+  ],
+  "competitors": [
+    {
+      "id": "litellm",
+      "name": "LiteLLM Proxy",
+      "urls": [
+        "https://docs.litellm.ai/docs/proxy/quick_start",
+        "https://docs.litellm.ai/docs/proxy/virtual_keys",
+        "https://docs.litellm.ai/docs/proxy/caching"
+      ],
+      "keyword_signals": [
+        {"id": "budget_limits", "label": "Budget and rate limits", "priority": 1, "keywords": ["budget", "rate limit", "virtual key"]},
+        {"id": "fallback_routing", "label": "Fallback routing", "priority": 1, "keywords": ["fallback", "router", "load balance"]}
+      ]
+    },
+    {
+      "id": "portkey",
+      "name": "Portkey",
+      "urls": [
+        "https://docs.portkey.ai/docs/product/ai-gateway",
+        "https://docs.portkey.ai/docs/product/prompt-library"
+      ],
+      "keyword_signals": [
+        {"id": "prompt_library", "label": "Prompt library governance", "priority": 2, "keywords": ["prompt library", "prompt template", "governance"]},
+        {"id": "gateway_guardrails", "label": "Gateway guardrails", "priority": 2, "keywords": ["guardrail", "ai gateway", "observability"]}
+      ]
+    },
+    {
+      "id": "kong_ai",
+      "name": "Kong AI Gateway",
+      "urls": [
+        "https://docs.konghq.com/gateway/latest/ai-gateway/",
+        "https://developer.konghq.com/gateway/ai-gateway/"
+      ],
+      "keyword_signals": [
+        {"id": "ai_plugins", "label": "AI gateway plugins", "priority": 2, "keywords": ["plugin", "ai gateway", "route policy"]},
+        {"id": "prompt_guard", "label": "Prompt security controls", "priority": 2, "keywords": ["prompt security", "pii", "guard"]}
+      ]
+    },
+    {
+      "id": "helicone",
+      "name": "Helicone",
+      "urls": [
+        "https://docs.helicone.ai/getting-started/quick-start",
+        "https://docs.helicone.ai/features/advanced-analytics"
+      ],
+      "keyword_signals": [
+        {"id": "cost_analytics", "label": "Cost analytics", "priority": 2, "keywords": ["cost", "analytics", "dashboard"]},
+        {"id": "auto_instrumentation", "label": "Auto instrumentation", "priority": 3, "keywords": ["instrumentation", "proxy", "header"]}
+      ]
+    }
+  ]
+}

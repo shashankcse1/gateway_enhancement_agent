@@ -4,8 +4,8 @@ Standalone **local** Python agent that compares your AI gateway platform against
 
 | Document | Audience |
 |----------|----------|
-| **[docs/USAGE.md](docs/USAGE.md)** | Operators and developers — installation, commands, scheduling, troubleshooting |
 | **[docs/DESIGN.md](docs/DESIGN.md)** | Architecture, runtime modes, data planes, gap prioritization |
+| **[docs/ARCHITECTURE_BEST_PRACTICES.md](docs/ARCHITECTURE_BEST_PRACTICES.md)** | Security, CISO, cloud, agentic, parallelism, components, microservices |
 
 ## What it does
 
@@ -14,7 +14,7 @@ Each cycle runs these phases against `TARGET_REPO` (your gateway checkout):
 1. **Discover** — inventory routes, tests, governance docs
 2. **Analyze** — scored gap matrix, competitor capability coverage, backlog update
 3. **Design** — implementation brief with role-lens checklist
-4. **Implement** — local Ollama (CPU/GPU) writes code into TARGET_REPO; no Cursor or cloud API
+4. **Implement** — parallel local-LLM subagents (backend, tests, UI, docs) + synthesizer merge into TARGET_REPO
 5. **Validate** — agent self-tests + TARGET_REPO gates (foreground only)
 6. **Document** — governance sync checklist
 7. **Release prep** — release decision draft
@@ -68,13 +68,33 @@ make login-uninstall   # stop auto-start
 
 Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make validate`** in foreground after the local LLM applies changes.
 
-## Local AI (Ollama — no Cursor, no cloud)
+## Local providers
+
+| Phase | Provider | Notes |
+|-------|----------|-------|
+| **Discover — web research** | Free public docs + local rule-based extraction | `config/competitor_research.json`; no Ollama, no paid APIs |
+| **Implement / review / synthesizer** | [Ollama](https://ollama.com) | `config/local_llm.json`, `config/parallel_workers.json` |
+
+### Web research (discover)
+
+Fetches allowlisted public documentation (LiteLLM, Portkey, Kong, Helicone), extracts capabilities via keyword/route matching, caches results for 7 days. Force refresh: `make research-competitors`.
+
+### Ollama agents (implement)
 
 1. Install [Ollama](https://ollama.com) (uses Metal GPU on Apple Silicon, CPU fallback).
 2. Pull a coding model: `ollama pull qwen2.5-coder:7b`
 3. Check readiness: `make llm-status`
 
-Each implement phase sends context to Ollama and writes files under `TARGET_REPO`. Configure `LOCAL_LLM_*` in `.env` or `config/local_llm.json`. Details: [docs/USAGE.md § Foreground vs background](docs/USAGE.md#foreground-vs-background-modes).
+Each implement phase runs **parallel subagents** (independent Ollama workers) then a **synthesizer** merges their file outputs. Configure `PARALLEL_IMPLEMENT=0` for single-pass mode. See `config/parallel_workers.json`.
+
+## Weekly email summary
+
+Sends a gateway status report to **shashankcse@gmail.com** every 7 days (also checked after each hourly cycle).
+
+1. Set Gmail app password in `.env`: `SMTP_USER`, `SMTP_PASSWORD`
+2. Preview: `make weekly-report`
+3. Send now: `make send-weekly-report`
+4. Schedule (Sundays 09:00): included in `make login-install` or `make weekly-email-install`
 
 ## Commands
 
@@ -98,8 +118,10 @@ Full command reference with examples: **[docs/USAGE.md](docs/USAGE.md)**.
 | `LOOP_INTERVAL_SECONDS` | Loop interval (default `3600`) |
 | `AGENT_DATA_DIR` | Writable state/artifacts (Application Support when scheduled) |
 | `make login-install` | Schedule on Mac login |
-| `LOCAL_LLM_MODEL` | Ollama model for code generation |
+| `LOCAL_LLM_MODEL` | Ollama model for implement/review/synthesizer agents |
 | `LOCAL_LLM_AUTO_IMPLEMENT` | `1` = apply LLM patches to TARGET_REPO |
+| `COMPETITOR_WEB_RESEARCH` | `1` = fetch free public docs in discover phase |
+| `COMPETITOR_RESEARCH_MODE` | `local` = rule-based extraction (default; no Ollama) |
 
 ## Open source
 

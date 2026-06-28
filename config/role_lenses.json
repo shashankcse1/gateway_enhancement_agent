@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "lenses": [
+    {
+      "id": "security_architect",
+      "label": "Security Architect",
+      "mandatory": true,
+      "checks": ["authz", "least_privilege", "threat_boundaries", "token_lifecycle"]
+    },
+    {
+      "id": "audit_architect",
+      "label": "Audit Architect",
+      "mandatory": true,
+      "checks": ["mutation_audit", "deny_path_evidence", "traceability"]
+    },
+    {
+      "id": "ciso_lens",
+      "label": "CISO",
+      "mandatory": true,
+      "checks": ["blast_radius", "residual_risk", "go_no_go"]
+    },
+    {
+      "id": "cloud_engineer",
+      "label": "Cloud Engineer",
+      "mandatory": true,
+      "checks": ["deployability", "rollback", "observability", "rate_limits"]
+    },
+    {
+      "id": "aws_engineer",
+      "label": "AWS Engineer",
+      "mandatory": false,
+      "checks": ["iam_least_privilege", "sts_boundaries", "secret_posture"]
+    },
+    {
+      "id": "ai_architect",
+      "label": "AI Architect",
+      "mandatory": false,
+      "checks": ["model_routing", "fallback_strategy", "responsible_ai"]
+    },
+    {
+      "id": "frontend_ui_expert",
+      "label": "Frontend UI Expert",
+      "mandatory": false,
+      "checks": ["accessibility", "operator_ux", "error_paths"]
+    },
+    {
+      "id": "security_engineer",
+      "label": "Security Engineer Expert",
+      "mandatory": true,
+      "checks": ["abuse_case_tests", "input_validation", "endpoint_hardening"]
+    }
+  ]
+}

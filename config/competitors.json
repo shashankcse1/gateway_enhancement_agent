@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "description": "Local competitor capability profiles. Edit here — no network fetch.",
+  "description": "Baseline competitor capability profiles. Web research (config/competitor_research.json) augments these.",
   "competitors": [
     {
       "id": "litellm",

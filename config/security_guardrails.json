@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "blocked_path_patterns": [".env", ".pem", ".key", "credentials", "secrets/", "id_rsa"],
+  "blocked_content_patterns": [
+    "AKIA[0-9A-Z]{16}",
+    "password\\s*=\\s*['\"][^'\"]+['\"]",
+    "api[_-]?key\\s*=\\s*['\"][^'\"]+['\"]",
+    "BEGIN (RSA |OPENSSH )?PRIVATE KEY"
+  ],
+  "max_file_bytes": 524288,
+  "require_review_for_paths": [
+    "backend/app/routers/gateway.py",
+    "backend/docs/security/residual-and-accepted-risk-register.md"
+  ]
+}

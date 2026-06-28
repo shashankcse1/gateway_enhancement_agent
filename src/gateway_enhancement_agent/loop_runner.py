@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import time
 
+from gateway_enhancement_agent.email_notifier import maybe_send_weekly_report
+from gateway_enhancement_agent.git_automation import fully_autonomous
 from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
 from gateway_enhancement_agent.state_store import CycleState
 
@@ -19,7 +21,7 @@ def run_loop(
     max_cycles: int = 0,
     skip_validation: bool = False,
 ) -> list[CycleState]:
-    if _background_mode():
+    if _background_mode() and not fully_autonomous():
         skip_validation = True
     pipeline = SDLCPipeline()
     completed: list[CycleState] = []
@@ -34,6 +36,13 @@ def run_loop(
         )
         if cycle.status != "completed":
             print(f"  errors: {'; '.join(cycle.errors)}")
+        elif cycle.metadata.get("merge_succeeded"):
+            print(f"  merged: {cycle.metadata.get('merge_commit_sha', '—')} pushed={cycle.metadata.get('merge_pushed')}")
+        email_result = maybe_send_weekly_report()
+        if email_result.get("sent"):
+            print(f"  weekly email sent to {email_result.get('recipient')}")
+        elif email_result.get("error"):
+            print(f"  weekly email error: {email_result['error']}")
         if max_cycles and count >= max_cycles:
             break
         print(f"  sleeping {interval_seconds}s before next competitor check…")

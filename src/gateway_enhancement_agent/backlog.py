@@ -95,6 +95,27 @@ class BacklogStore:
             if item.get("status") == "deferred"
         }
 
+    def closed_ids(self) -> set[str]:
+        data = self.load()
+        return {
+            gap_id
+            for gap_id, item in data.get("items", {}).items()
+            if item.get("status") == "closed"
+        }
+
+    def mark_closed(self, gap_id: str, cycle_id: int, *, commit_sha: str | None = None) -> None:
+        data = self.load()
+        item = data.setdefault("items", {}).get(gap_id)
+        if not item:
+            return
+        item["status"] = "closed"
+        item["closed_cycle"] = cycle_id
+        item["closed_at"] = _utc_now()
+        if commit_sha:
+            item["commit_sha"] = commit_sha
+        data["updated_at"] = _utc_now()
+        self.save(data)
+
     def report_markdown(self) -> str:
         data = self.load()
         items = list(data.get("items", {}).values())

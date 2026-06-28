@@ -1,4 +1,4 @@
-.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute llm-status
+.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute llm-status weekly-report send-weekly-report weekly-email-install
 
 ROOT := $(shell pwd)
 GATEWAY_REPO ?= /Users/sk/Desktop/untitled folder/new design
@@ -57,6 +57,9 @@ validate:
 discover:
 	python3 -m gateway_enhancement_agent discover
 
+research-competitors:
+	python3 -m gateway_enhancement_agent research-competitors --force
+
 analyze:
 	python3 -m gateway_enhancement_agent analyze
 
@@ -85,3 +88,12 @@ status:
 
 llm-status:
 	python3 -m gateway_enhancement_agent llm-status
+
+weekly-report:
+	python3 -m gateway_enhancement_agent weekly-report
+
+send-weekly-report:
+	python3 -m gateway_enhancement_agent send-weekly-report --force
+
+weekly-email-install:
+	bash ./scripts/install_weekly_email.sh

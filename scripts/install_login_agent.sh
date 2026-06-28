@@ -25,6 +25,9 @@ LOCAL_LLM_ENABLED="${LOCAL_LLM_ENABLED:-1}"
 LOCAL_LLM_AUTO_IMPLEMENT="${LOCAL_LLM_AUTO_IMPLEMENT:-1}"
 LOCAL_LLM_BASE_URL="${LOCAL_LLM_BASE_URL:-http://127.0.0.1:11434}"
 LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL:-qwen2.5-coder:7b}"
+AGENT_FULLY_AUTONOMOUS="${AGENT_FULLY_AUTONOMOUS:-1}"
+AGENT_AUTO_PUSH="${AGENT_AUTO_PUSH:-1}"
+AGENT_MERGE_BRANCH="${AGENT_MERGE_BRANCH:-}"
 
 if [[ -z "$TARGET" ]]; then
   echo "TARGET_REPO is not set in .env"
@@ -66,10 +69,18 @@ export LOCAL_LLM_ENABLED="${LOCAL_LLM_ENABLED}"
 export LOCAL_LLM_AUTO_IMPLEMENT="${LOCAL_LLM_AUTO_IMPLEMENT}"
 export LOCAL_LLM_BASE_URL="${LOCAL_LLM_BASE_URL}"
 export LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL}"
+export AGENT_FULLY_AUTONOMOUS="${AGENT_FULLY_AUTONOMOUS:-1}"
+export AGENT_AUTO_PUSH="${AGENT_AUTO_PUSH:-1}"
+export AGENT_MERGE_BRANCH="${AGENT_MERGE_BRANCH:-}"
+export WEEKLY_EMAIL_TO="${WEEKLY_EMAIL_TO:-shashankcse@gmail.com}"
+export WEEKLY_EMAIL_ENABLED="${WEEKLY_EMAIL_ENABLED:-1}"
+if [[ -f "${ROOT}/.env" ]]; then set -a; source "${ROOT}/.env"; set +a; fi
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"
 SCRIPT
 chmod +x "${SUPPORT}/run_loop.sh"
+
+bash "${ROOT}/scripts/install_weekly_email.sh"
 
 cat >"$PLIST_DEST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

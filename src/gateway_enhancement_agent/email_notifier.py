@@ -1,0 +1,118 @@
+"""Send weekly gateway summary email via SMTP."""
+
+from __future__ import annotations
+
+import json
+import os
+import smtplib
+import ssl
+from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Any
+
+from gateway_enhancement_agent.config import runtime_dir
+from gateway_enhancement_agent.weekly_summary import (
+    EmailConfig,
+    build_weekly_summary,
+    weekly_summary_markdown,
+    weekly_summary_subject,
+)
+
+
+class EmailNotifier:
+    def __init__(self, config: EmailConfig | None = None) -> None:
+        self.config = config or EmailConfig.from_env()
+        self.state_file = runtime_dir() / "email_state.json"
+
+    def load_state(self) -> dict[str, Any]:
+        if not self.state_file.exists():
+            return {"last_sent_at": None, "last_error": None}
+        return json.loads(self.state_file.read_text(encoding="utf-8"))
+
+    def save_state(self, payload: dict[str, Any]) -> None:
+        self.state_file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    def due(self) -> bool:
+        if not self.config.enabled:
+            return False
+        state = self.load_state()
+        last = state.get("last_sent_at")
+        if not last:
+            return True
+        try:
+            last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        return datetime.now(timezone.utc) - last_dt >= timedelta(days=self.config.interval_days)
+
+    def send_weekly_report(self, *, force: bool = False) -> dict[str, Any]:
+        if not self.config.enabled:
+            return {"sent": False, "skipped": "Weekly email disabled"}
+        if not force and not self.due():
+            return {"sent": False, "skipped": "Not due yet"}
+
+        summary = build_weekly_summary()
+        body = weekly_summary_markdown(summary)
+        subject = weekly_summary_subject(summary)
+        recipient = self.config.recipient
+
+        smtp_user = os.environ.get("SMTP_USER", "").strip()
+        smtp_password = os.environ.get("SMTP_PASSWORD", "").strip()
+        if not smtp_user or not smtp_password:
+            msg = (
+                "SMTP credentials missing. Set SMTP_USER and SMTP_PASSWORD in .env "
+                "(Gmail: use an app password)."
+            )
+            self.save_state({**self.load_state(), "last_error": msg})
+            return {"sent": False, "error": msg, "summary": summary}
+
+        try:
+            self._send_smtp(
+                subject=subject,
+                body=body,
+                recipient=recipient,
+                smtp_user=smtp_user,
+                smtp_password=smtp_password,
+            )
+            sent_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            report_path = runtime_dir() / f"weekly_summary_{sent_at[:10]}.md"
+            report_path.write_text(body, encoding="utf-8")
+            self.save_state({"last_sent_at": sent_at, "last_error": None, "last_recipient": recipient})
+            return {
+                "sent": True,
+                "recipient": recipient,
+                "subject": subject,
+                "sent_at": sent_at,
+                "report_path": str(report_path),
+            }
+        except Exception as exc:  # noqa: BLE001
+            self.save_state({**self.load_state(), "last_error": str(exc)})
+            return {"sent": False, "error": str(exc), "summary": summary}
+
+    def _send_smtp(
+        self,
+        *,
+        subject: str,
+        body: str,
+        recipient: str,
+        smtp_user: str,
+        smtp_password: str,
+    ) -> None:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = self.config.from_address or smtp_user
+        msg["To"] = recipient
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        context = ssl.create_default_context()
+        with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port, timeout=60) as server:
+            if self.config.smtp_use_tls:
+                server.starttls(context=context)
+            server.login(smtp_user, smtp_password)
+            server.sendmail(msg["From"], [recipient], msg.as_string())
+
+
+def maybe_send_weekly_report() -> dict[str, Any]:
+    return EmailNotifier().send_weekly_report(force=False)

@@ -11,7 +11,7 @@ The **gateway-enhancement-agent** is a standalone Python project that:
 3. Prioritizes gaps and emits SDLC artifacts (gap matrix, design brief, work order).
 4. Optionally validates changes via agent self-tests and gateway repo gates.
 
-Everything runs **locally**. There is no cloud API, no network fetch for competitor data, and no code embedded inside the gateway repo.
+Everything runs **locally**. **Ollama** powers implement/review/synthesizer subagents. **Competitor web research** fetches free public documentation and extracts capabilities with a local rule-based parser (no Ollama, no paid APIs). No code is embedded inside the gateway repo.
 
 ### Prerequisites
 
