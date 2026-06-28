@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gateway-enhancement-agent"
-version = "0.1.1"
+version = "0.2.0"
 description = "Local competitor-gap analysis and SDLC loop for AI gateway codebases (no cloud services)."
 readme = "README.md"
 requires-python = ">=3.9"

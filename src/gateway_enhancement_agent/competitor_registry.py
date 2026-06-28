@@ -17,6 +17,7 @@ class CompetitorCapability:
     priority: int
     competitor_id: str
     competitor_name: str
+    route_hints: list[str]
 
 
 @dataclass
@@ -66,6 +67,7 @@ class CompetitorRegistry:
                     priority=int(c.get("priority", 3)),
                     competitor_id=entry["id"],
                     competitor_name=entry["name"],
+                    route_hints=list(c.get("route_hints", [])),
                 )
                 for c in entry.get("capabilities", [])
             ]

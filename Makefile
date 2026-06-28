@@ -1,4 +1,4 @@
-.PHONY: install test self-test validate run run-full loop status discover analyze schedule schedule-install schedule-uninstall login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute
+.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute
 
 ROOT := $(shell pwd)
 GATEWAY_REPO ?= /Users/sk/Desktop/untitled folder/new design
@@ -59,6 +59,18 @@ discover:
 
 analyze:
 	python3 -m gateway_enhancement_agent analyze
+
+coverage:
+	python3 -m gateway_enhancement_agent coverage
+
+backlog:
+	python3 -m gateway_enhancement_agent backlog
+
+sync-mirror:
+	python3 -m gateway_enhancement_agent sync-mirror
+
+design-doc:
+	python3 -m gateway_enhancement_agent design
 
 run:
 	python3 -m gateway_enhancement_agent run

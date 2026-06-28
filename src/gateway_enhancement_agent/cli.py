@@ -6,10 +6,14 @@ import argparse
 import os
 import sys
 
+from gateway_enhancement_agent.backlog import BacklogStore
+from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
+from gateway_enhancement_agent.config import source_root
 from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.loop_runner import run_loop
+from gateway_enhancement_agent.mirror_sync import sync_mirror
 from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
 from gateway_enhancement_agent.state_store import StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
@@ -103,6 +107,36 @@ def cmd_loop(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_coverage(_: argparse.Namespace) -> int:
+    coverage = CapabilityCoverage()
+    print(coverage.report_markdown())
+    return 0
+
+
+def cmd_backlog(_: argparse.Namespace) -> int:
+    print(BacklogStore().report_markdown())
+    return 0
+
+
+def cmd_sync_mirror(_: argparse.Namespace) -> int:
+    result = sync_mirror()
+    print(f"Mirror: {result['mirror_dir']}")
+    print(f"Copied {len(result['files_copied'])} files from {result['target_repo']}")
+    for path in result["files_copied"]:
+        print(f"  - {path}")
+    return 0
+
+
+def cmd_design(_: argparse.Namespace) -> int:
+    design = source_root() / "docs" / "DESIGN.md"
+    if design.exists():
+        print(design.read_text(encoding="utf-8"))
+    else:
+        print("docs/DESIGN.md not found", file=sys.stderr)
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gateway-agent",
@@ -113,6 +147,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="Show loop state and target repo").set_defaults(func=cmd_status)
     sub.add_parser("discover", help="Print inventory and competitor snapshot").set_defaults(func=cmd_discover)
     sub.add_parser("analyze", help="Print gap matrix").set_defaults(func=cmd_analyze)
+    sub.add_parser("coverage", help="Print competitor capability coverage").set_defaults(func=cmd_coverage)
+    sub.add_parser("backlog", help="Print enhancement backlog").set_defaults(func=cmd_backlog)
+    sub.add_parser("sync-mirror", help="Sync governance mirror from TARGET_REPO").set_defaults(func=cmd_sync_mirror)
+    sub.add_parser("design", help="Print architecture design document").set_defaults(func=cmd_design)
 
     run_p = sub.add_parser("run", help="Run one full SDLC cycle")
     run_p.add_argument(

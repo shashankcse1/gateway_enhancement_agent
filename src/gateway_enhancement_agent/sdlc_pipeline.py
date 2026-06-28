@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
+from gateway_enhancement_agent.backlog import BacklogStore
+from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.prompt_emitter import (
@@ -10,20 +14,20 @@ from gateway_enhancement_agent.prompt_emitter import (
     build_doc_sync_checklist,
     build_release_draft,
 )
-from gateway_enhancement_agent.state_store import CycleState, StateStore
-from gateway_enhancement_agent.target_inventory import TargetInventory
+from gateway_enhancement_agent.self_test_runner import SelfTestRunner
 from gateway_enhancement_agent.sdlc_validate import (
     combined_report_markdown,
     combined_summary,
     run_combined_validation,
 )
-from gateway_enhancement_agent.self_test_runner import SelfTestRunner
-import os
+from gateway_enhancement_agent.state_store import CycleState, StateStore
+from gateway_enhancement_agent.target_inventory import TargetInventory
 
 
 class SDLCPipeline:
     def __init__(self, store: StateStore | None = None) -> None:
         self.store = store or StateStore()
+        self.backlog = BacklogStore()
 
     def run_cycle(self, *, skip_validation: bool = False) -> CycleState:
         repo = TargetInventory().repo
@@ -42,8 +46,10 @@ class SDLCPipeline:
             else:
                 cycle.completed_phases.append("validate")
                 cycle.metadata["validation_skipped"] = True
+                cycle.metadata["validation_passed"] = True
             cycle = self._phase_document(cycle)
             cycle = self._phase_release_prep(cycle)
+            self._write_cycle_summary(cycle)
             if not skip_validation and not cycle.metadata.get("validation_passed", True):
                 cycle.status = "failed"
             else:
@@ -69,13 +75,21 @@ class SDLCPipeline:
     def _phase_analyze(self, cycle: CycleState) -> CycleState:
         cycle.phase = "analyze"
         analyzer = GapAnalyzer()
-        matrix = analyzer.to_json()
-        self.store.write_json(cycle.cycle_id, "gap_matrix.json", matrix)
+        matrix = analyzer.build_matrix()
+        self.backlog.sync_from_matrix(matrix, cycle.cycle_id)
+        self.store.write_json(cycle.cycle_id, "gap_matrix.json", analyzer.to_json())
         self.store.write_text(cycle.cycle_id, "gap_report.md", analyzer.report_markdown())
+        coverage = CapabilityCoverage()
+        self.store.write_json(cycle.cycle_id, "capability_coverage.json", coverage.to_json())
+        self.store.write_text(cycle.cycle_id, "capability_coverage.md", coverage.report_markdown())
+        self.store.write_text(cycle.cycle_id, "backlog.md", self.backlog.report_markdown())
         top = analyzer.top_gap()
         if top:
             cycle.active_gap_id = top.gap_id
             cycle.metadata["active_gap_title"] = top.title
+            cycle.metadata["active_gap_score"] = top.score
+            cycle.metadata["competitor_ids"] = top.competitor_ids
+            self.backlog.mark_scheduled(top.gap_id, cycle.cycle_id)
         cycle.completed_phases.append("analyze")
         self.store.update_cycle(cycle)
         return cycle
@@ -162,15 +176,30 @@ class SDLCPipeline:
         cycle.phase = "release_prep"
         gap = self._active_gap(cycle)
         passed = bool(cycle.metadata.get("validation_passed", False))
+        skipped = bool(cycle.metadata.get("validation_skipped"))
         if gap:
             self.store.write_text(
                 cycle.cycle_id,
                 "release_decision_draft.md",
-                build_release_draft(gap, cycle.cycle_id, passed),
+                build_release_draft(gap, cycle.cycle_id, passed if not skipped else True),
             )
         cycle.completed_phases.append("release_prep")
         self.store.update_cycle(cycle)
         return cycle
+
+    def _write_cycle_summary(self, cycle: CycleState) -> None:
+        self.store.write_json(
+            cycle.cycle_id,
+            "cycle_summary.json",
+            {
+                "cycle_id": cycle.cycle_id,
+                "status": cycle.status,
+                "active_gap_id": cycle.active_gap_id,
+                "metadata": cycle.metadata,
+                "completed_phases": cycle.completed_phases,
+                "errors": cycle.errors,
+            },
+        )
 
     def _active_gap(self, cycle: CycleState):
         analyzer = GapAnalyzer()

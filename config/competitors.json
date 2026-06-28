@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "description": "Local competitor capability profiles. Edit here — no network fetch.",
   "competitors": [
     {
@@ -10,39 +10,114 @@
         "docs/governance/ai-gateway-litellm-parity-gap-analysis.md"
       ],
       "capabilities": [
-        {"id": "openai_compat_surface", "label": "OpenAI-compatible API surface", "priority": 1},
-        {"id": "multi_provider_routing", "label": "Multi-provider routing and fallbacks", "priority": 1},
-        {"id": "virtual_keys_budgets", "label": "Virtual keys and budget guardrails", "priority": 1},
-        {"id": "assistants_fine_tuning", "label": "Assistants, threads, fine-tuning jobs", "priority": 2},
-        {"id": "inference_cache", "label": "Inference response cache short-circuit", "priority": 2},
-        {"id": "rag_vector_stores", "label": "RAG ingest/query and vector stores", "priority": 2},
-        {"id": "realtime_media", "label": "Realtime and media transport governance", "priority": 2},
-        {"id": "observability_sinks", "label": "External observability sink routing", "priority": 3}
+        {
+          "id": "openai_compat_surface",
+          "label": "OpenAI-compatible API surface",
+          "priority": 1,
+          "route_hints": ["/v1/chat/completions", "/v1/responses", "/v1/embeddings"]
+        },
+        {
+          "id": "multi_provider_routing",
+          "label": "Multi-provider routing and fallbacks",
+          "priority": 1,
+          "route_hints": ["/gateway/routes", "/gateway/fallback"]
+        },
+        {
+          "id": "virtual_keys_budgets",
+          "label": "Virtual keys and budget guardrails",
+          "priority": 1,
+          "route_hints": ["/keys", "/cost", "/gateway/entitlements"]
+        },
+        {
+          "id": "assistants_fine_tuning",
+          "label": "Assistants, threads, fine-tuning jobs",
+          "priority": 2,
+          "route_hints": ["/v1/assistants", "/v1/threads", "/v1/fine_tuning"]
+        },
+        {
+          "id": "inference_cache",
+          "label": "Inference response cache short-circuit",
+          "priority": 2,
+          "route_hints": ["/gateway/cache", "/gateway/response-cache"]
+        },
+        {
+          "id": "rag_vector_stores",
+          "label": "RAG ingest/query and vector stores",
+          "priority": 2,
+          "route_hints": ["/rag/", "/v1/vector_stores"]
+        },
+        {
+          "id": "realtime_media",
+          "label": "Realtime and media transport governance",
+          "priority": 2,
+          "route_hints": ["/v1/realtime", "/v1/audio", "/v1/images"]
+        },
+        {
+          "id": "observability_sinks",
+          "label": "External observability sink routing",
+          "priority": 3,
+          "route_hints": ["/observability", "/gateway/callbacks"]
+        }
       ]
     },
     {
       "id": "portkey",
       "name": "Portkey",
       "capabilities": [
-        {"id": "prompt_governance", "label": "Prompt registry and release governance", "priority": 2},
-        {"id": "quality_triage", "label": "Quality triage and escalation", "priority": 2},
-        {"id": "gateway_governance", "label": "Gateway governance evidence workflows", "priority": 2}
+        {
+          "id": "prompt_governance",
+          "label": "Prompt registry and release governance",
+          "priority": 2,
+          "route_hints": ["/gateway/prompts", "/route-drafts"]
+        },
+        {
+          "id": "quality_triage",
+          "label": "Quality triage and escalation",
+          "priority": 2,
+          "route_hints": ["/gateway/quality", "/observability"]
+        },
+        {
+          "id": "gateway_governance",
+          "label": "Gateway governance evidence workflows",
+          "priority": 2,
+          "route_hints": ["/gateway/governance", "/compliance"]
+        }
       ]
     },
     {
       "id": "kong_ai",
       "name": "Kong AI Gateway",
       "capabilities": [
-        {"id": "route_policy_depth", "label": "Route policy and plugin-style controls", "priority": 2},
-        {"id": "entitlement_model", "label": "Model/tool entitlement enforcement", "priority": 2}
+        {
+          "id": "route_policy_depth",
+          "label": "Route policy and plugin-style controls",
+          "priority": 2,
+          "route_hints": ["/gateway/routes", "/route-drafts"]
+        },
+        {
+          "id": "entitlement_model",
+          "label": "Model/tool entitlement enforcement",
+          "priority": 2,
+          "route_hints": ["/gateway/entitlements", "/v1/"]
+        }
       ]
     },
     {
       "id": "helicone",
       "name": "Helicone",
       "capabilities": [
-        {"id": "cost_analytics_depth", "label": "Long-window cost and quality analytics", "priority": 3},
-        {"id": "auto_instrumentation", "label": "Turnkey SDK auto-instrumentation breadth", "priority": 3}
+        {
+          "id": "cost_analytics_depth",
+          "label": "Long-window cost and quality analytics",
+          "priority": 3,
+          "route_hints": ["/cost/timeseries", "/cost/"]
+        },
+        {
+          "id": "auto_instrumentation",
+          "label": "Turnkey SDK auto-instrumentation breadth",
+          "priority": 3,
+          "route_hints": ["/observability", "/gateway/"]
+        }
       ]
     }
   ],

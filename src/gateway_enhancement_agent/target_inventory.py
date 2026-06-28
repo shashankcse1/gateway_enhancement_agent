@@ -69,20 +69,53 @@ class TargetInventory:
             return []
         return sorted(p.name for p in tests.glob("test_gateway*.py"))
 
+    def candidate_paths_for_rel(self, rel: str) -> list[Path]:
+        paths = [self.repo / rel]
+        if self.mirror:
+            paths.append(self.mirror / rel)
+        return paths
+
+    def list_inventory_rows(self) -> list[tuple[str, str, str, str]]:
+        """Return (method, route, coverage, section) for all gateway-related inventory rows."""
+        rels = (
+            "backend/docs/governance/api-inventory-and-ui-map.md",
+            "docs/governance/api-inventory-and-ui-map.md",
+        )
+        for rel in rels:
+            for path in self.candidate_paths_for_rel(rel):
+                rows = self._parse_inventory_rows(path)
+                if rows:
+                    return rows
+        return []
+
+    def _parse_inventory_rows(self, path: Path) -> list[tuple[str, str, str, str]]:
+        text = self._read_text(path)
+        if not text:
+            return []
+        rows: list[tuple[str, str, str, str]] = []
+        section = ""
+        for line in text.splitlines():
+            if line.startswith("### "):
+                section = line.removeprefix("### ").strip()
+                continue
+            if "gateway" not in section.lower() and "/gateway" not in line and "/v1/" not in line:
+                continue
+            match = INVENTORY_ROW.match(line)
+            if not match:
+                continue
+            rows.append((match.group(1).upper(), match.group(2), match.group(3), section))
+        return rows
+
     def parse_inventory_gaps(self) -> list[InventoryGap]:
         rels = (
             "backend/docs/governance/api-inventory-and-ui-map.md",
             "docs/governance/api-inventory-and-ui-map.md",
         )
-        paths: list[Path] = []
         for rel in rels:
-            paths.append(self.repo / rel)
-            if self.mirror:
-                paths.append(self.mirror / rel)
-        for path in paths:
-            gaps = self._parse_inventory_file(path)
-            if gaps:
-                return gaps
+            for path in self.candidate_paths_for_rel(rel):
+                gaps = self._parse_inventory_file(path)
+                if gaps:
+                    return gaps
         return []
 
     def agents_contract_exists(self) -> bool:

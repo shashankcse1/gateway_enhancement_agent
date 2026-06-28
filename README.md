@@ -2,120 +2,82 @@
 
 Standalone **local** Python agent that compares your AI gateway platform against competitor capability profiles, prioritizes gaps, and drives a full **SDLC loop** — without embedding tooling inside the gateway codebase and **without any cloud service dependency**.
 
+See **[docs/DESIGN.md](docs/DESIGN.md)** for architecture, runtime modes, data planes, and gap prioritization.
+
 ## What it does
 
 Each cycle runs these phases against `TARGET_REPO` (your gateway checkout):
 
 1. **Discover** — inventory routes, tests, governance docs
-2. **Analyze** — gap matrix from API inventory + competitor profiles
-3. **Design** — implementation brief aligned with target `AGENTS.md`
-4. **Implement** — emits `agent_work_order.md` for Cursor Agent (you execute in the gateway repo)
-5. **Validate** — local pytest, control coverage, smoke scripts in `TARGET_REPO`
+2. **Analyze** — scored gap matrix, competitor capability coverage, backlog update
+3. **Design** — implementation brief with role-lens checklist
+4. **Implement** — emits `agent_work_order.md` for Cursor Agent
+5. **Validate** — agent self-tests + TARGET_REPO gates (foreground only)
 6. **Document** — governance sync checklist
 7. **Release prep** — release decision draft
 
-Artifacts land in `artifacts/cycle-XXXX/` in **this** project only.
+Artifacts land in `artifacts/cycle-XXXX/` (or Application Support when scheduled).
 
 ## Quick start
 
 ```bash
-cd "/Users/sk/Desktop/untitled folder/gateway-enhancement-agent"
+cd "/path/to/gateway-enhancement-agent"
+cp .env.example .env   # set TARGET_REPO="/path/to/gateway"
 
-# Point at your gateway platform repo
-cp .env.example .env
-# Edit TARGET_REPO=/path/to/your/gateway-repo
+pip install -e ".[dev]"
 
-pip install -e .
-
-# One-shot discovery
 gateway-agent discover
 gateway-agent analyze
-
-# Full SDLC cycle (analysis + work order + validation)
-gateway-agent run
-
-# Continuous competitor-check loop (default 1h interval)
-gateway-agent loop --interval 3600 --max-cycles 5
+gateway-agent coverage    # competitor capability vs inventory
+gateway-agent backlog     # persistent gap backlog
+gateway-agent run         # full SDLC cycle
 ```
 
 ## Architecture
 
 ```
-gateway-enhancement-agent/     ← this project (orchestrator)
-├── config/                    ← competitors, SDLC phases, validation gates
-├── src/gateway_enhancement_agent/
-└── artifacts/                 ← cycle outputs (gitignored)
+gateway-enhancement-agent/          orchestrator (this repo)
+├── docs/DESIGN.md                  architecture + runtime modes
+├── config/competitors.json         capability profiles + route_hints
+└── artifacts/cycle-XXXX/           gap matrix, coverage, work orders
 
-TARGET_REPO/                   ← your gateway platform (read + agent edits)
-├── backend/app/routers/gateway.py
-├── backend/docs/governance/
-└── frontend/
+TARGET_REPO/                        gateway platform (read + agent edits)
 ```
 
-The orchestrator **never** ships inside the gateway repo. It only reads governance docs and runs validation commands there.
+## macOS auto-start (recommended)
 
-## Cursor IDE workflow
+```bash
+make login-install     # LaunchAgent: starts on login, KeepAlive, hourly loop
+make agent-status
+make sync-mirror       # refresh governance mirror after doc changes
+make login-uninstall   # stop auto-start
+```
 
-After `gateway-agent run`:
+Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make validate`** in foreground after implementing a work order.
 
-1. Open `artifacts/cycle-XXXX/agent_work_order.md`
-2. Open **TARGET_REPO** in Cursor
-3. Paste the work order into Agent chat (or use the project skill below)
-4. When code is ready: `gateway-agent validate`
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `gateway-agent run` | Full SDLC cycle |
+| `gateway-agent validate` | Agent tests + gateway gates |
+| `gateway-agent coverage` | Competitor capability coverage matrix |
+| `gateway-agent backlog` | Enhancement backlog across cycles |
+| `gateway-agent sync-mirror` | Copy governance docs to launchd-safe mirror |
+| `gateway-agent design` | Print architecture document |
+| `make login-install` | Schedule on Mac login |
 
 ## Configuration
 
 | Variable | Purpose |
 |----------|---------|
 | `TARGET_REPO` | Absolute path to gateway platform checkout |
-| `LOOP_INTERVAL_SECONDS` | Sleep between loop cycles (default `3600`) |
-| `MAX_CYCLES` | Stop after N cycles (`0` = unlimited) |
+| `LOOP_INTERVAL_SECONDS` | Loop interval (default `3600`) |
+| `AGENT_DATA_DIR` | Writable state/artifacts (Application Support when scheduled) |
+| `TARGET_REPO_MIRROR` | Governance mirror for background reads |
 
-Edit `config/competitors.json` to add competitors or capabilities (local only — no web fetch).
-
-Edit `config/validation_gates.json` to tune which commands run in `TARGET_REPO`.
-
-## SDLC validation (mandatory)
-
-Every `gateway-agent run` executes **two validation layers** unless `--skip-validation` is passed:
-
-1. **Agent self-tests** — `pytest` on this project (`config/agent_self_tests.json`)
-2. **Target repo gates** — gateway pytest, smoke scripts, control coverage (`config/validation_gates.json`)
-
-```bash
-make install          # Mac local install
-make self-test        # agent unit tests only
-make validate         # self-tests + gateway gates
-gateway-agent run     # full SDLC cycle (includes validation)
-```
-
-Cycle **fails** if either validation layer fails. See `artifacts/cycle-XXXX/validation_report.md`.
-
-## Schedule on macOS
-
-**Recommended (while logged in):** background daemon loop
-
-```bash
-make daemon-start    # hourly cycles (LOOP_INTERVAL_SECONDS in .env)
-make daemon-status
-tail -f .runtime/daemon.log
-make daemon-stop
-```
-
-**Optional:** macOS LaunchAgent (runs when logged in; may need Full Disk Access if project lives under Desktop)
-
-```bash
-make schedule-install
-make schedule-uninstall
-```
-
-Default interval: **3600s** (1 hour). Edit `LOOP_INTERVAL_SECONDS` in `.env`.
-
-
-## Project skill (optional)
-
-Copy or symlink `.cursor/skills/gateway-competitor-sdlc/` into your Cursor skills path, or open this repo alongside TARGET_REPO and reference the skill when implementing work orders.
+Edit `config/competitors.json` to add competitors, capabilities, and `route_hints`.
 
 ## License
 
-Use internally for your gateway platform sustainment loop.
+Internal use for gateway platform sustainment.

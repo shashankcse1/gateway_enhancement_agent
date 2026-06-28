@@ -19,6 +19,7 @@ def test_gap_analyzer_prioritizes_gap_over_partial(mock_target_repo) -> None:
     top = GapAnalyzer().top_gap()
     assert top is not None
     assert top.coverage == "Gap"
+    assert top.score <= 20
 
 
 def test_competitor_registry_loads_profiles(mock_target_repo) -> None:
@@ -37,6 +38,8 @@ def test_sdlc_pipeline_writes_artifacts(mock_target_repo, monkeypatch) -> None:
     assert cycle.status == "completed"
     art = store.cycle_dir(cycle.cycle_id)
     assert (art / "gap_matrix.json").exists()
+    assert (art / "capability_coverage.json").exists()
+    assert (art / "cycle_summary.json").exists()
     assert (art / "agent_work_order.md").exists()
     matrix = json.loads((art / "gap_matrix.json").read_text(encoding="utf-8"))
     assert len(matrix) >= 1

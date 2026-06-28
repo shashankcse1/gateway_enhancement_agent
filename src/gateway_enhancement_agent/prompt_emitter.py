@@ -10,20 +10,32 @@ from gateway_enhancement_agent.gap_analyzer import GapItem
 
 def build_design_brief(gap: GapItem, cycle_id: int) -> str:
     repo = target_repo()
+    comp_line = ", ".join(gap.competitor_ids) if gap.competitor_ids else "N/A"
+    caps_line = ", ".join(gap.related_capabilities) if gap.related_capabilities else "N/A"
     return f"""# Design Brief — Cycle {cycle_id:04d}
 
 ## Gap
 
 - **ID:** `{gap.gap_id}`
 - **Title:** {gap.title}
+- **Score:** {gap.score} (lower = higher priority)
 - **Source:** {gap.source}
-- **Priority:** {gap.priority}
 - **Route:** {gap.route or 'N/A'}
+- **Coverage:** {gap.coverage or 'N/A'}
+- **Competitors:** {comp_line}
+- **Related capabilities:** {caps_line}
 - **Rationale:** {gap.rationale}
 
 ## Target repository
 
 `{repo}`
+
+## Role-lens checklist (from backend/AGENTS.md)
+
+- [ ] Security Architect — authz, least privilege, threat boundaries
+- [ ] Audit Architect — allow/deny audit evidence on mutations
+- [ ] CISO — blast radius and residual risk
+- [ ] Security Engineer — abuse-case tests for changed surfaces
 
 ## Constraints (mandatory)
 
