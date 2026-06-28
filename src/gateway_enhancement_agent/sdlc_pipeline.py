@@ -8,10 +8,12 @@ from gateway_enhancement_agent.backlog import BacklogStore
 from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
+from gateway_enhancement_agent.code_implementer import CodeImplementer
 from gateway_enhancement_agent.prompt_emitter import (
     build_agent_work_order,
     build_design_brief,
     build_doc_sync_checklist,
+    build_implementation_report,
     build_release_draft,
 )
 from gateway_enhancement_agent.self_test_runner import SelfTestRunner
@@ -107,11 +109,41 @@ class SDLCPipeline:
         cycle.phase = "implement"
         gap = self._active_gap(cycle)
         if gap:
+            design_brief = (self.store.cycle_dir(cycle.cycle_id) / "design_brief.md").read_text(encoding="utf-8")
             self.store.write_text(
                 cycle.cycle_id,
                 "agent_work_order.md",
                 build_agent_work_order(gap, cycle.cycle_id),
             )
+            artifact_dir = self.store.cycle_dir(cycle.cycle_id)
+            result = CodeImplementer().implement(
+                gap,
+                cycle_id=cycle.cycle_id,
+                design_brief=design_brief,
+                artifact_dir=artifact_dir,
+            )
+            report = build_implementation_report(gap, cycle.cycle_id, result)
+            self.store.write_text(cycle.cycle_id, "implementation_report.md", report)
+            self.store.write_json(
+                cycle.cycle_id,
+                "implementation_report.json",
+                {
+                    "attempted": result.attempted,
+                    "succeeded": result.succeeded,
+                    "model": result.model,
+                    "files_written": result.files_written,
+                    "skipped_reason": result.skipped_reason,
+                    "error": result.error,
+                    "llm_response_path": result.llm_response_path,
+                },
+            )
+            cycle.metadata["local_implementation_attempted"] = result.attempted
+            cycle.metadata["local_implementation_succeeded"] = result.succeeded
+            cycle.metadata["local_implementation_files"] = result.files_written
+            if result.skipped_reason:
+                cycle.metadata["local_implementation_skipped"] = result.skipped_reason
+            if result.error:
+                cycle.errors.append(f"Local implementation: {result.error}")
         cycle.completed_phases.append("implement")
         self.store.update_cycle(cycle)
         return cycle

@@ -59,7 +59,7 @@ This project is open source under the [MIT License](../LICENSE). See [DISCLAIMER
 1. **Discover** — route count, test files, API inventory Partial/Gap rows, competitor profiles
 2. **Analyze** — prioritized gap matrix + capability coverage matrix + backlog update
 3. **Design** — brief with competitor context, role-lens checklist, acceptance criteria
-4. **Implement** — `agent_work_order.md` for Cursor Agent in TARGET_REPO
+4. **Implement** — `CodeImplementer` calls **local Ollama** (Metal GPU / CPU) to patch TARGET_REPO
 5. **Validate** — tiered gates (see `config/agent_self_tests.json`, `config/validation_gates.json`)
 6. **Document** — governance sync checklist
 7. **Release prep** — release decision draft with validation posture

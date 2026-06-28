@@ -33,6 +33,7 @@ def test_sdlc_pipeline_writes_artifacts(mock_target_repo, monkeypatch) -> None:
     from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
     from gateway_enhancement_agent.state_store import StateStore
 
+    monkeypatch.setenv("LOCAL_LLM_AUTO_IMPLEMENT", "0")
     store = StateStore()
     cycle = SDLCPipeline(store).run_cycle(skip_validation=True)
     assert cycle.status == "completed"
@@ -41,5 +42,6 @@ def test_sdlc_pipeline_writes_artifacts(mock_target_repo, monkeypatch) -> None:
     assert (art / "capability_coverage.json").exists()
     assert (art / "cycle_summary.json").exists()
     assert (art / "agent_work_order.md").exists()
+    assert (art / "implementation_report.json").exists()
     matrix = json.loads((art / "gap_matrix.json").read_text(encoding="utf-8"))
     assert len(matrix) >= 1

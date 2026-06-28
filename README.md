@@ -14,7 +14,7 @@ Each cycle runs these phases against `TARGET_REPO` (your gateway checkout):
 1. **Discover** — inventory routes, tests, governance docs
 2. **Analyze** — scored gap matrix, competitor capability coverage, backlog update
 3. **Design** — implementation brief with role-lens checklist
-4. **Implement** — emits `agent_work_order.md` for Cursor Agent
+4. **Implement** — local Ollama (CPU/GPU) writes code into TARGET_REPO; no Cursor or cloud API
 5. **Validate** — agent self-tests + TARGET_REPO gates (foreground only)
 6. **Document** — governance sync checklist
 7. **Release prep** — release decision draft
@@ -66,7 +66,15 @@ make sync-mirror       # refresh governance mirror after doc changes
 make login-uninstall   # stop auto-start
 ```
 
-Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make validate`** in foreground after implementing a work order. Details: [docs/USAGE.md § Foreground vs background](docs/USAGE.md#foreground-vs-background-modes).
+Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make validate`** in foreground after the local LLM applies changes.
+
+## Local AI (Ollama — no Cursor, no cloud)
+
+1. Install [Ollama](https://ollama.com) (uses Metal GPU on Apple Silicon, CPU fallback).
+2. Pull a coding model: `ollama pull qwen2.5-coder:7b`
+3. Check readiness: `make llm-status`
+
+Each implement phase sends context to Ollama and writes files under `TARGET_REPO`. Configure `LOCAL_LLM_*` in `.env` or `config/local_llm.json`. Details: [docs/USAGE.md § Foreground vs background](docs/USAGE.md#foreground-vs-background-modes).
 
 ## Commands
 
@@ -78,7 +86,7 @@ Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make val
 | `gateway-agent backlog` | Enhancement backlog across cycles |
 | `gateway-agent sync-mirror` | Copy governance docs to launchd-safe mirror |
 | `gateway-agent design` | Print architecture document |
-| `make login-install` | Schedule on Mac login |
+| `gateway-agent llm-status` | Check Ollama model availability |
 
 Full command reference with examples: **[docs/USAGE.md](docs/USAGE.md)**.
 
@@ -89,10 +97,10 @@ Full command reference with examples: **[docs/USAGE.md](docs/USAGE.md)**.
 | `TARGET_REPO` | Absolute path to gateway platform checkout |
 | `LOOP_INTERVAL_SECONDS` | Loop interval (default `3600`) |
 | `AGENT_DATA_DIR` | Writable state/artifacts (Application Support when scheduled) |
-| `TARGET_REPO_MIRROR` | Governance mirror for background reads |
+| `make login-install` | Schedule on Mac login |
+| `LOCAL_LLM_MODEL` | Ollama model for code generation |
+| `LOCAL_LLM_AUTO_IMPLEMENT` | `1` = apply LLM patches to TARGET_REPO |
 
-Edit `config/competitors.json` to add competitors, capabilities, and `route_hints`.
+## Open source
 
-## License
-
-Internal use for gateway platform sustainment.
+This project is **open source** software released under the [MIT License](LICENSE). See [docs/DISCLAIMER.md](docs/DISCLAIMER.md).

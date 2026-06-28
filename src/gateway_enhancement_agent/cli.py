@@ -12,6 +12,7 @@ from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.config import source_root
 from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
+from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.mirror_sync import sync_mirror
 from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
@@ -75,7 +76,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"Cycle {cycle.cycle_id} finished: status={cycle.status}")
     print(f"Artifacts: artifacts/cycle-{cycle.cycle_id:04d}/")
     if cycle.active_gap_id:
-        print(f"Active gap: {cycle.active_gap_id} — open agent_work_order.md in Cursor")
+        impl = cycle.metadata.get("local_implementation_succeeded")
+        if impl is True:
+            files = cycle.metadata.get("local_implementation_files") or []
+            print(f"Active gap: {cycle.active_gap_id} — local LLM wrote {len(files)} file(s)")
+        elif cycle.metadata.get("local_implementation_skipped"):
+            print(f"Active gap: {cycle.active_gap_id} — {cycle.metadata['local_implementation_skipped']}")
+        else:
+            print(f"Active gap: {cycle.active_gap_id} — see implementation_report.md")
     if cycle.errors:
         for err in cycle.errors:
             print(f"  error: {err}", file=sys.stderr)
@@ -127,6 +135,24 @@ def cmd_sync_mirror(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_llm_status(_: argparse.Namespace) -> int:
+    cfg = LLMConfig.from_env()
+    health = LocalLLMClient(cfg).health()
+    print("=== Local LLM (Ollama) ===")
+    print(f"Base URL:       {health.base_url}")
+    print(f"Configured:     {health.model}")
+    print(f"Reachable:      {health.reachable}")
+    print(f"Model ready:    {health.model_available}")
+    print(f"Auto-implement: {cfg.auto_implement}")
+    if health.available_models:
+        print(f"Installed:      {', '.join(health.available_models[:8])}")
+    if health.error:
+        print(f"Error:          {health.error}")
+    if health.reachable and not health.model_available:
+        print(f"\nPull a model:   ollama pull {cfg.model}")
+    return 0 if health.reachable and health.model_available else 1
+
+
 def cmd_design(_: argparse.Namespace) -> int:
     design = source_root() / "docs" / "DESIGN.md"
     if design.exists():
@@ -140,7 +166,7 @@ def cmd_design(_: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gateway-agent",
-        description="Local competitor-gap SDLC agent for external gateway repos (no cloud).",
+        description="Local competitor-gap SDLC agent — uses Ollama on this Mac (CPU/GPU), no cloud or IDE.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -150,6 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("coverage", help="Print competitor capability coverage").set_defaults(func=cmd_coverage)
     sub.add_parser("backlog", help="Print enhancement backlog").set_defaults(func=cmd_backlog)
     sub.add_parser("sync-mirror", help="Sync governance mirror from TARGET_REPO").set_defaults(func=cmd_sync_mirror)
+    sub.add_parser("llm-status", help="Check local Ollama model availability").set_defaults(func=cmd_llm_status)
     sub.add_parser("design", help="Print architecture design document").set_defaults(func=cmd_design)
 
     run_p = sub.add_parser("run", help="Run one full SDLC cycle")

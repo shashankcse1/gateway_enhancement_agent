@@ -19,7 +19,7 @@
     {
       "id": "implement",
       "label": "Implement",
-      "description": "Emit Cursor IDE work order for the top gap (you or Cursor Agent executes in TARGET_REPO)."
+      "description": "Apply code changes in TARGET_REPO using local Ollama (CPU/GPU on this Mac)."
     },
     {
       "id": "validate",

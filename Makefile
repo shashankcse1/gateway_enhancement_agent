@@ -1,4 +1,4 @@
-.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute
+.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute llm-status
 
 ROOT := $(shell pwd)
 GATEWAY_REPO ?= /Users/sk/Desktop/untitled folder/new design
@@ -82,3 +82,6 @@ loop:
 
 status:
 	python3 -m gateway_enhancement_agent status
+
+llm-status:
+	python3 -m gateway_enhancement_agent llm-status

@@ -21,6 +21,11 @@ if [[ -f .env ]]; then
   TARGET="${TARGET_REPO:-$TARGET}"
 fi
 
+LOCAL_LLM_ENABLED="${LOCAL_LLM_ENABLED:-1}"
+LOCAL_LLM_AUTO_IMPLEMENT="${LOCAL_LLM_AUTO_IMPLEMENT:-1}"
+LOCAL_LLM_BASE_URL="${LOCAL_LLM_BASE_URL:-http://127.0.0.1:11434}"
+LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL:-qwen2.5-coder:7b}"
+
 if [[ -z "$TARGET" ]]; then
   echo "TARGET_REPO is not set in .env"
   exit 1
@@ -57,6 +62,10 @@ export TARGET_REPO_MIRROR="${SUPPORT}/target-mirror"
 export LOOP_INTERVAL_SECONDS="${INTERVAL}"
 export AGENT_CONFIG_DIR="${SUPPORT}/config"
 export AGENT_BACKGROUND_MODE="1"
+export LOCAL_LLM_ENABLED="${LOCAL_LLM_ENABLED}"
+export LOCAL_LLM_AUTO_IMPLEMENT="${LOCAL_LLM_AUTO_IMPLEMENT}"
+export LOCAL_LLM_BASE_URL="${LOCAL_LLM_BASE_URL}"
+export LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL}"
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"
 SCRIPT

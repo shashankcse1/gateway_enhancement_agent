@@ -1,4 +1,4 @@
-"""Emit Cursor IDE work orders for implementation in TARGET_REPO."""
+"""Emit implementation briefs and work orders for local LLM execution in TARGET_REPO."""
 
 from __future__ import annotations
 
@@ -62,9 +62,9 @@ def build_design_brief(gap: GapItem, cycle_id: int) -> str:
 
 def build_agent_work_order(gap: GapItem, cycle_id: int) -> str:
     repo = target_repo()
-    return f"""# Agent Work Order — Cycle {cycle_id:04d}
+    return f"""# Implementation Work Order — Cycle {cycle_id:04d}
 
-> Open this file in Cursor with **TARGET_REPO** as workspace root, or paste into Agent chat.
+> The SDLC pipeline applies this via **local Ollama** (CPU/GPU on this Mac). No cloud or IDE dependency.
 
 ## Task
 
@@ -77,6 +77,7 @@ Implement the highest-priority gateway gap for cycle {cycle_id:04d}:
 - Target repo: `{repo}`
 - Design brief: `artifacts/cycle-{cycle_id:04d}/design_brief.md`
 - Gap matrix: `artifacts/cycle-{cycle_id:04d}/gap_matrix.json`
+- Implementation report: `artifacts/cycle-{cycle_id:04d}/implementation_report.md`
 
 ## Instructions
 
@@ -95,6 +96,41 @@ Implement the highest-priority gateway gap for cycle {cycle_id:04d}:
 - [ ] Tests added/updated for changed behavior
 - [ ] Governance inventory synced
 - [ ] `gateway-agent validate` passes required gates
+"""
+
+
+def build_implementation_report(gap: GapItem, cycle_id: int, result) -> str:
+    repo = target_repo()
+    if not result.attempted:
+        status = f"Skipped — {result.skipped_reason or 'not configured'}"
+    elif result.succeeded:
+        status = f"Applied via local model `{result.model}`"
+    else:
+        status = f"Failed — {result.error or result.skipped_reason or 'no files written'}"
+    files = "\n".join(f"- `{f}`" for f in result.files_written) or "- _(none)_"
+    return f"""# Local Implementation Report — Cycle {cycle_id:04d}
+
+## Gap
+
+**{gap.title}** (`{gap.gap_id}`)
+
+## Status
+
+{status}
+
+## Target repository
+
+`{repo}`
+
+## Files written
+
+{files}
+
+## Next steps
+
+1. Review diffs in TARGET_REPO before merge.
+2. Run `gateway-agent validate` in foreground.
+3. Update governance docs per `doc_sync_checklist.md`.
 """
 
 
