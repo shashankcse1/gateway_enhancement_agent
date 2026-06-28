@@ -2,7 +2,10 @@
 
 Standalone **local** Python agent that compares your AI gateway platform against competitor capability profiles, prioritizes gaps, and drives a full **SDLC loop** — without embedding tooling inside the gateway codebase and **without any cloud service dependency**.
 
-See **[docs/DESIGN.md](docs/DESIGN.md)** for architecture, runtime modes, data planes, and gap prioritization.
+| Document | Audience |
+|----------|----------|
+| **[docs/USAGE.md](docs/USAGE.md)** | Operators and developers — installation, commands, scheduling, troubleshooting |
+| **[docs/DESIGN.md](docs/DESIGN.md)** | Architecture, runtime modes, data planes, gap prioritization |
 
 ## What it does
 
@@ -21,27 +24,37 @@ Artifacts land in `artifacts/cycle-XXXX/` (or Application Support when scheduled
 ## Quick start
 
 ```bash
-cd "/path/to/gateway-enhancement-agent"
-cp .env.example .env   # set TARGET_REPO="/path/to/gateway"
+cd "/Users/sk/Desktop/untitled folder/gateway-enhancement-agent"
 
-pip install -e ".[dev]"
+cp .env.example .env
+# Edit .env — quote paths with spaces:
+#   TARGET_REPO="/Users/sk/Desktop/untitled folder/new design"
+
+make install
 
 gateway-agent discover
 gateway-agent analyze
-gateway-agent coverage    # competitor capability vs inventory
-gateway-agent backlog     # persistent gap backlog
-gateway-agent run         # full SDLC cycle
+gateway-agent run          # full SDLC cycle → artifacts/cycle-XXXX/
 ```
+
+After implementing a work order in the gateway repo:
+
+```bash
+make validate              # agent pytest + gateway gates
+```
+
+For LaunchAgent scheduling, mirror sync, and troubleshooting, see **[docs/USAGE.md](docs/USAGE.md)**.
 
 ## Architecture
 
 ```
 gateway-enhancement-agent/          orchestrator (this repo)
-├── docs/DESIGN.md                  architecture + runtime modes
-├── config/competitors.json         capability profiles + route_hints
-└── artifacts/cycle-XXXX/           gap matrix, coverage, work orders
+├── docs/USAGE.md                     operator guide (commands, scheduling)
+├── docs/DESIGN.md                    architecture + runtime modes
+├── config/competitors.json           capability profiles + route_hints
+└── artifacts/cycle-XXXX/             gap matrix, coverage, work orders
 
-TARGET_REPO/                        gateway platform (read + agent edits)
+TARGET_REPO/                          gateway platform (read + agent edits)
 ```
 
 ## macOS auto-start (recommended)
@@ -53,7 +66,7 @@ make sync-mirror       # refresh governance mirror after doc changes
 make login-uninstall   # stop auto-start
 ```
 
-Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make validate`** in foreground after implementing a work order.
+Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make validate`** in foreground after implementing a work order. Details: [docs/USAGE.md § Foreground vs background](docs/USAGE.md#foreground-vs-background-modes).
 
 ## Commands
 
@@ -66,6 +79,8 @@ Background cycles skip TARGET_REPO pytest (Desktop permissions). Run **`make val
 | `gateway-agent sync-mirror` | Copy governance docs to launchd-safe mirror |
 | `gateway-agent design` | Print architecture document |
 | `make login-install` | Schedule on Mac login |
+
+Full command reference with examples: **[docs/USAGE.md](docs/USAGE.md)**.
 
 ## Configuration
 

@@ -1,5 +1,7 @@
 # Gateway Enhancement Agent — Design
 
+For installation, CLI commands, LaunchAgent setup, and troubleshooting, see **[USAGE.md](USAGE.md)**.
+
 ## Purpose
 
 Local orchestrator that closes the loop between **competitor capability expectations**, **gateway governance inventory**, and **operator implementation** — without embedding tooling in the gateway repo or calling cloud APIs.
@@ -38,6 +40,10 @@ Local orchestrator that closes the loop between **competitor capability expectat
 | **Loop (daemon)** | `make daemon-start` | Same as background if env set | Recommended | Dev session without launchd |
 
 Background mode intentionally **does not** run gateway pytest from launchd — Desktop path permissions and long runtimes make that unreliable. Run `make validate` in foreground after implementing a work order.
+
+## Legal
+
+This project is open source under the [MIT License](../LICENSE). See [DISCLAIMER.md](DISCLAIMER.md) for warranty and liability terms.
 
 ## Data planes
 

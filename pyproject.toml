@@ -7,6 +7,7 @@ name = "gateway-enhancement-agent"
 version = "0.2.0"
 description = "Local competitor-gap analysis and SDLC loop for AI gateway codebases (no cloud services)."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.9"
 dependencies = []
 
