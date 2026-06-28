@@ -87,14 +87,15 @@ Fetches allowlisted public documentation (LiteLLM, Portkey, Kong, Helicone), ext
 
 Each implement phase runs **parallel subagents** (independent Ollama workers) then a **synthesizer** merges their file outputs. Configure `PARALLEL_IMPLEMENT=0` for single-pass mode. See `config/parallel_workers.json`.
 
-## Weekly email summary
+## Summary email (every 2 hours)
 
-Sends a gateway status report to **shashankcse@gmail.com** every 7 days (also checked after each hourly cycle).
+Sends a gateway status report to **shashankcse@gmail.com** every 2 hours (also checked after each hourly SDLC cycle when due).
 
 1. Set Gmail app password in `.env`: `SMTP_USER`, `SMTP_PASSWORD`
-2. Preview: `make weekly-report`
-3. Send now: `make send-weekly-report`
-4. Schedule (Sundays 09:00): included in `make login-install` or `make weekly-email-install`
+2. Set interval: `EMAIL_INTERVAL_HOURS=2` (default)
+3. Preview: `make weekly-report`
+4. Send now: `make send-weekly-report`
+5. Schedule: included in `make login-install` or `make weekly-email-install`
 
 ## Commands
 

@@ -1,4 +1,4 @@
-"""Send weekly gateway summary email via SMTP."""
+"""Send gateway summary email via SMTP on a configurable interval."""
 
 from __future__ import annotations
 
@@ -45,11 +45,11 @@ class EmailNotifier:
             last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
         except ValueError:
             return True
-        return datetime.now(timezone.utc) - last_dt >= timedelta(days=self.config.interval_days)
+        return datetime.now(timezone.utc) - last_dt >= timedelta(hours=self.config.interval_hours)
 
     def send_weekly_report(self, *, force: bool = False) -> dict[str, Any]:
         if not self.config.enabled:
-            return {"sent": False, "skipped": "Weekly email disabled"}
+            return {"sent": False, "skipped": "Summary email disabled"}
         if not force and not self.due():
             return {"sent": False, "skipped": "Not due yet"}
 

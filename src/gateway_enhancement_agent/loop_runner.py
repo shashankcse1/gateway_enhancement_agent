@@ -40,9 +40,9 @@ def run_loop(
             print(f"  merged: {cycle.metadata.get('merge_commit_sha', '—')} pushed={cycle.metadata.get('merge_pushed')}")
         email_result = maybe_send_weekly_report()
         if email_result.get("sent"):
-            print(f"  weekly email sent to {email_result.get('recipient')}")
+            print(f"  summary email sent to {email_result.get('recipient')}")
         elif email_result.get("error"):
-            print(f"  weekly email error: {email_result['error']}")
+            print(f"  summary email error: {email_result['error']}")
         if max_cycles and count >= max_cycles:
             break
         print(f"  sleeping {interval_seconds}s before next competitor check…")

@@ -1,12 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "enabled": true,
   "recipient": "shashankcse@gmail.com",
   "from_address": "",
   "subject_prefix": "[Gateway Agent]",
-  "interval_days": 7,
+  "interval_hours": 2,
   "smtp_host": "smtp.gmail.com",
   "smtp_port": 587,
   "smtp_use_tls": true,
-  "history_days": 7
+  "history_days": 1
 }

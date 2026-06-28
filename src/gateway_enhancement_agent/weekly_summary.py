@@ -20,7 +20,7 @@ class EmailConfig:
     recipient: str
     from_address: str
     subject_prefix: str
-    interval_days: int
+    interval_hours: int
     smtp_host: str
     smtp_port: int
     smtp_use_tls: bool
@@ -39,17 +39,26 @@ class EmailConfig:
         from_addr = os.environ.get("WEEKLY_EMAIL_FROM", raw.get("from_address", "")).strip()
         if not from_addr:
             from_addr = os.environ.get("SMTP_USER", recipient)
+        interval_hours = raw.get("interval_hours")
+        if interval_hours is None and raw.get("interval_days") is not None:
+            interval_hours = int(raw["interval_days"]) * 24
+        interval_hours = int(
+            os.environ.get(
+                "EMAIL_INTERVAL_HOURS",
+                os.environ.get("WEEKLY_EMAIL_INTERVAL_HOURS", interval_hours or 2),
+            )
+        )
         return cls(
             enabled=enabled,
             recipient=recipient,
             from_address=from_addr,
             subject_prefix=raw.get("subject_prefix", "[Gateway Agent]"),
-            interval_days=int(os.environ.get("WEEKLY_EMAIL_INTERVAL_DAYS", raw.get("interval_days", 7))),
+            interval_hours=max(1, interval_hours),
             smtp_host=os.environ.get("SMTP_HOST", raw.get("smtp_host", "smtp.gmail.com")),
             smtp_port=int(os.environ.get("SMTP_PORT", raw.get("smtp_port", 587))),
             smtp_use_tls=str(os.environ.get("SMTP_USE_TLS", raw.get("smtp_use_tls", True))).lower()
             not in {"0", "false", "no"},
-            history_days=int(os.environ.get("WEEKLY_EMAIL_HISTORY_DAYS", raw.get("history_days", 7))),
+            history_days=int(os.environ.get("WEEKLY_EMAIL_HISTORY_DAYS", raw.get("history_days", 1))),
         )
 
 
@@ -142,7 +151,7 @@ def weekly_summary_markdown(summary: dict[str, Any]) -> str:
     last = cycles.get("last_cycle") or {}
     last_meta = last.get("metadata") or {}
     lines = [
-        "# Gateway Weekly Summary",
+        "# Gateway Agent Summary",
         "",
         f"Generated: {summary['generated_at']}",
         f"Target repo: `{summary['target_repo']}`",
@@ -198,6 +207,6 @@ def weekly_summary_subject(summary: dict[str, Any]) -> str:
     inv = summary["inventory"]
     open_gaps = summary["backlog"]["open"]
     return (
-        f"{cfg.subject_prefix} Weekly summary — "
+        f"{cfg.subject_prefix} Summary — "
         f"{inv['partial_gap_endpoints']} partial/gap endpoints, {open_gaps} open backlog items"
     )

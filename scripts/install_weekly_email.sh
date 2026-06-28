@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install LaunchAgent for weekly gateway summary email (Sundays 09:00 local).
+# Install LaunchAgent for periodic gateway summary email (default every 2 hours).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,13 +9,17 @@ LABEL="com.gateway.enhancement-agent-weekly-email"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 SUPPORT="${HOME}/Library/Application Support/gateway-enhancement-agent"
 SRC_LINK="${HOME}/.gateway-enhancement-agent-src"
+EMAIL_INTERVAL_HOURS="${EMAIL_INTERVAL_HOURS:-2}"
 
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091
   source .env
   set +a
+  EMAIL_INTERVAL_HOURS="${EMAIL_INTERVAL_HOURS:-2}"
 fi
+
+INTERVAL_SECONDS=$((EMAIL_INTERVAL_HOURS * 3600))
 
 PYTHON_BIN="$(PYTHONPATH="${SRC_LINK}/src" python3 -c "import sys; print(sys.executable)" 2>/dev/null || echo python3)"
 
@@ -52,16 +56,9 @@ cat >"$PLIST_DEST" <<EOF
   <key>WorkingDirectory</key>
   <string>${SUPPORT}</string>
   <key>RunAtLoad</key>
-  <false/>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Weekday</key>
-    <integer>0</integer>
-    <key>Hour</key>
-    <integer>9</integer>
-    <key>Minute</key>
-    <integer>0</integer>
-  </dict>
+  <true/>
+  <key>StartInterval</key>
+  <integer>${INTERVAL_SECONDS}</integer>
   <key>StandardOutPath</key>
   <string>${SUPPORT}/.runtime/weekly-email.out.log</string>
   <key>StandardErrorPath</key>
@@ -74,8 +71,9 @@ UID_NUM="$(id -u)"
 launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
 launchctl bootstrap "gui/${UID_NUM}" "$PLIST_DEST"
 launchctl enable "gui/${UID_NUM}/${LABEL}"
+launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
 
-echo "Weekly email agent installed — Sundays at 09:00 local time."
+echo "Summary email agent installed — every ${EMAIL_INTERVAL_HOURS} hour(s) (${INTERVAL_SECONDS}s)."
 echo "  Recipient: \${WEEKLY_EMAIL_TO:-shashankcse@gmail.com} (set in .env)"
 echo "  Script:    ${SUPPORT}/run_weekly_email.sh"
 echo ""
