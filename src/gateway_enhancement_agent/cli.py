@@ -16,7 +16,7 @@ from gateway_enhancement_agent.weekly_summary import build_weekly_summary, weekl
 from gateway_enhancement_agent.config import source_root
 from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
-from gateway_enhancement_agent.llm_client import LLMClient, LLMConfig
+from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.mirror_sync import sync_mirror
 from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
