@@ -109,6 +109,7 @@ SCRIPT
 chmod +x "${SUPPORT}/run_loop.sh"
 
 bash "${ROOT}/scripts/install_weekly_email.sh"
+bash "${ROOT}/scripts/install_health_alert.sh"
 
 cat >"$PLIST_DEST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

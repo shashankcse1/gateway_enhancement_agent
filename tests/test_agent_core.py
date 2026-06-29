@@ -22,6 +22,25 @@ def test_gap_analyzer_prioritizes_gap_over_partial(mock_target_repo) -> None:
     assert top.score <= 20
 
 
+def test_gap_analyzer_skips_deprecated_inventory_items(mock_target_repo) -> None:
+    inv_path = mock_target_repo / "backend/docs/governance/api-inventory-and-ui-map.md"
+    inv_path.write_text(
+        """### `app/routers/gateway.py`
+
+| Method | Route | UI Coverage | Notes |
+| ------ | ----- | ----------- | ----- |
+| GET | `/gateway/cursor-token` | Partial | Deprecated compatibility endpoint |
+| GET | `/v1/vector_stores` | Partial | OpenAI-compatible registry list |
+| DELETE | `/v1/responses/{id}` | Gap | not wired |
+""",
+        encoding="utf-8",
+    )
+    top = GapAnalyzer().top_gap()
+    assert top is not None
+    assert "cursor-token" not in top.title
+    assert top.coverage == "Gap"
+
+
 def test_competitor_registry_loads_profiles(mock_target_repo) -> None:
     reg = CompetitorRegistry()
     snap = reg.snapshot()

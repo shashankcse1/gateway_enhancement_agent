@@ -11,6 +11,7 @@ from gateway_enhancement_agent.backlog import BacklogStore
 from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.competitor_web_research import CompetitorWebResearcher, maybe_refresh_competitor_research
+from gateway_enhancement_agent.agent_health import assess_agent_health, health_alert_markdown
 from gateway_enhancement_agent.email_notifier import EmailNotifier
 from gateway_enhancement_agent.weekly_summary import build_weekly_summary, weekly_summary_markdown
 from gateway_enhancement_agent.config import source_root
@@ -190,6 +191,28 @@ def cmd_send_weekly_report(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_health_check(_: argparse.Namespace) -> int:
+    report = assess_agent_health()
+    print(json.dumps(report, indent=2))
+    print()
+    print(health_alert_markdown(report))
+    return 0 if report.get("healthy") else 1
+
+
+def cmd_send_health_alert(args: argparse.Namespace) -> int:
+    result = EmailNotifier().send_health_alert(force=args.force)
+    if result.get("sent"):
+        print(f"Alert sent to {result['recipient']}: {result['subject']}")
+        return 0
+    if result.get("skipped"):
+        print(f"Skipped: {result['skipped']}")
+        return 0 if result.get("report", {}).get("healthy") else 1
+    print(f"Failed: {result.get('error', 'unknown error')}", file=sys.stderr)
+    if result.get("report_path"):
+        print(f"Saved locally: {result['report_path']}")
+    return 1
+
+
 def cmd_design(_: argparse.Namespace) -> int:
     design = source_root() / "docs" / "DESIGN.md"
     if design.exists():
@@ -221,6 +244,10 @@ def build_parser() -> argparse.ArgumentParser:
     send_weekly = sub.add_parser("send-weekly-report", help="Email weekly gateway summary")
     send_weekly.add_argument("--force", action="store_true", help="Send even if interval not elapsed")
     send_weekly.set_defaults(func=cmd_send_weekly_report)
+    sub.add_parser("health-check", help="Assess agent health (exit 1 if unhealthy)").set_defaults(func=cmd_health_check)
+    send_health = sub.add_parser("send-health-alert", help="Email alert if agent is not working")
+    send_health.add_argument("--force", action="store_true", help="Send even if cooldown not elapsed")
+    send_health.set_defaults(func=cmd_send_health_alert)
     sub.add_parser("design", help="Print architecture design document").set_defaults(func=cmd_design)
 
     run_p = sub.add_parser("run", help="Run one full SDLC cycle")
@@ -248,11 +275,13 @@ def main() -> None:
     _load_dotenv()
     parser = build_parser()
     args = parser.parse_args()
-    try:
-        target_repo()
-    except FileNotFoundError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(2)
+    repo_optional = args.command in {"health-check", "send-health-alert", "send-weekly-report", "weekly-report"}
+    if not repo_optional:
+        try:
+            target_repo()
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            sys.exit(2)
     sys.exit(args.func(args))
 
 

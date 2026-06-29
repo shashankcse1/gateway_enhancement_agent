@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 FILE_BLOCK_RE = re.compile(
-    r"```(?:file:?|path:?)\s*([^\n`]+)\n([\s\S]*?)```",
+    r"```(?:(?:\w+):)?(?:file:?|path:?)\s*([^\n`]+)\n([\s\S]*?)```",
     re.IGNORECASE,
 )
 

@@ -44,6 +44,9 @@ class GapAnalyzer:
             gap_id = f"inv-{idx:03d}"
             if gap_id in deferred or gap_id in closed:
                 continue
+            notes = (gap.notes or "").lower()
+            if "deprecated" in notes:
+                continue
             priority = 1 if gap.coverage.lower() == "gap" else 2
             comp_ids, cap_ids = self._match_capabilities(gap.route)
             score = self._base_score(gap.coverage, priority)

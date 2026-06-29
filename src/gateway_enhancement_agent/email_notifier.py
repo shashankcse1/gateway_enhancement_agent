@@ -12,6 +12,13 @@ from email.mime.text import MIMEText
 from typing import Any
 
 from gateway_enhancement_agent.config import runtime_dir
+from gateway_enhancement_agent.agent_health import (
+    HealthAlertConfig,
+    HealthAlertState,
+    assess_agent_health,
+    health_alert_markdown,
+    health_alert_subject,
+)
 from gateway_enhancement_agent.weekly_summary import (
     EmailConfig,
     build_weekly_summary,
@@ -67,6 +74,7 @@ class EmailNotifier:
             self.save_state({**self.load_state(), "last_error": msg})
             return {"sent": False, "error": msg, "summary": summary}
 
+        paths = self._write_report_artifacts(summary, body)
         try:
             self._send_smtp(
                 subject=subject,
@@ -76,21 +84,6 @@ class EmailNotifier:
                 smtp_password=smtp_password,
             )
             sent_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-            report_stem = f"summary_{sent_at[:10]}_{sent_at[11:16].replace(':', '')}"
-            report_path = runtime_dir() / f"{report_stem}.md"
-            report_path.write_text(body, encoding="utf-8")
-            matrix_path = runtime_dir() / f"{report_stem}_gap_matrix.json"
-            matrix_path.write_text(
-                json.dumps(summary.get("gap_matrix", []), indent=2) + "\n", encoding="utf-8"
-            )
-            coverage_path = runtime_dir() / f"{report_stem}_capability_matrix.json"
-            coverage_path.write_text(
-                json.dumps(summary.get("capability_matrix", []), indent=2) + "\n", encoding="utf-8"
-            )
-            performance_path = runtime_dir() / f"{report_stem}_performance.json"
-            performance_path.write_text(
-                json.dumps(summary.get("performance", {}), indent=2) + "\n", encoding="utf-8"
-            )
             self.save_state(
                 {
                     "last_sent_at": sent_at,
@@ -105,16 +98,41 @@ class EmailNotifier:
                 "recipient": recipient,
                 "subject": subject,
                 "sent_at": sent_at,
-                "report_path": str(report_path),
-                "gap_matrix_path": str(matrix_path),
-                "capability_matrix_path": str(coverage_path),
-                "performance_path": str(performance_path),
+                **paths,
                 "smtp_mode": self.config.smtp_mode,
                 "smtp_host": self.config.smtp_host,
             }
+        except (ConnectionRefusedError, OSError) as exc:
+            if not isinstance(exc, ConnectionRefusedError) and getattr(exc, "errno", None) != 61:
+                raise
+            msg = "Local Postfix not running. Run: sudo postfix start — report saved locally."
+            self.save_state({**self.load_state(), "last_error": msg})
+            return {"sent": False, "error": msg, "summary": summary, **paths}
         except Exception as exc:  # noqa: BLE001
             self.save_state({**self.load_state(), "last_error": str(exc)})
-            return {"sent": False, "error": str(exc), "summary": summary}
+            return {"sent": False, "error": str(exc), "summary": summary, **paths}
+
+    def _write_report_artifacts(self, summary: dict[str, Any], body: str) -> dict[str, str]:
+        stamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        report_stem = f"summary_{stamp[:10]}_{stamp[11:16].replace(':', '')}"
+        report_path = runtime_dir() / f"{report_stem}.md"
+        report_path.write_text(body, encoding="utf-8")
+        matrix_path = runtime_dir() / f"{report_stem}_gap_matrix.json"
+        matrix_path.write_text(json.dumps(summary.get("gap_matrix", []), indent=2) + "\n", encoding="utf-8")
+        coverage_path = runtime_dir() / f"{report_stem}_capability_matrix.json"
+        coverage_path.write_text(
+            json.dumps(summary.get("capability_matrix", []), indent=2) + "\n", encoding="utf-8"
+        )
+        performance_path = runtime_dir() / f"{report_stem}_performance.json"
+        performance_path.write_text(
+            json.dumps(summary.get("performance", {}), indent=2) + "\n", encoding="utf-8"
+        )
+        return {
+            "report_path": str(report_path),
+            "gap_matrix_path": str(matrix_path),
+            "capability_matrix_path": str(coverage_path),
+            "performance_path": str(performance_path),
+        }
 
     def _send_smtp(
         self,
@@ -140,5 +158,84 @@ class EmailNotifier:
             server.sendmail(msg["From"], [recipient], msg.as_string())
 
 
+    def send_health_alert(self, *, force: bool = False) -> dict[str, Any]:
+        alert_cfg = HealthAlertConfig.from_env()
+        if not alert_cfg.enabled:
+            return {"sent": False, "skipped": "Health alert disabled"}
+        if not self.config.enabled:
+            return {"sent": False, "skipped": "Email disabled in config"}
+
+        report = assess_agent_health(config=alert_cfg)
+        alert_state = HealthAlertState()
+
+        if report.get("healthy"):
+            alert_state.save(
+                {
+                    **alert_state.load(),
+                    "last_healthy_at": report.get("checked_at"),
+                    "last_report": report,
+                }
+            )
+            return {"sent": False, "skipped": "Agent healthy", "report": report}
+
+        if not force and not alert_state.alert_due(alert_cfg.alert_cooldown_hours):
+            return {"sent": False, "skipped": "Alert cooldown active", "report": report}
+
+        body = health_alert_markdown(report)
+        subject = health_alert_subject(report, prefix=self.config.subject_prefix)
+        recipient = alert_cfg.recipient or self.config.recipient
+
+        smtp_user = os.environ.get("SMTP_USER", "").strip()
+        smtp_password = os.environ.get("SMTP_PASSWORD", "").strip()
+        if self.config.smtp_auth and (not smtp_user or not smtp_password):
+            msg = "SMTP credentials missing for health alert."
+            alert_state.save({**alert_state.load(), "last_error": msg, "last_report": report})
+            return {"sent": False, "error": msg, "report": report}
+
+        stamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        alert_path = runtime_dir() / f"health_alert_{stamp[:10]}_{stamp[11:16].replace(':', '')}.md"
+        alert_path.write_text(body, encoding="utf-8")
+
+        try:
+            self._send_smtp(
+                subject=subject,
+                body=body,
+                recipient=recipient,
+                smtp_user=smtp_user,
+                smtp_password=smtp_password,
+            )
+            sent_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            alert_state.save(
+                {
+                    "last_alert_at": sent_at,
+                    "last_healthy_at": alert_state.load().get("last_healthy_at"),
+                    "last_error": None,
+                    "last_recipient": recipient,
+                    "last_report": report,
+                }
+            )
+            return {
+                "sent": True,
+                "recipient": recipient,
+                "subject": subject,
+                "sent_at": sent_at,
+                "report_path": str(alert_path),
+                "report": report,
+            }
+        except (ConnectionRefusedError, OSError) as exc:
+            if not isinstance(exc, ConnectionRefusedError) and getattr(exc, "errno", None) != 61:
+                raise
+            msg = "Local Postfix not running. Run: sudo postfix start — alert saved locally."
+            alert_state.save({**alert_state.load(), "last_error": msg, "last_report": report})
+            return {"sent": False, "error": msg, "report": report, "report_path": str(alert_path)}
+        except Exception as exc:  # noqa: BLE001
+            alert_state.save({**alert_state.load(), "last_error": str(exc), "last_report": report})
+            return {"sent": False, "error": str(exc), "report": report, "report_path": str(alert_path)}
+
+
 def maybe_send_weekly_report() -> dict[str, Any]:
     return EmailNotifier().send_weekly_report(force=False)
+
+
+def maybe_send_health_alert() -> dict[str, Any]:
+    return EmailNotifier().send_health_alert(force=False)

@@ -1,4 +1,4 @@
-.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute llm-status weekly-report send-weekly-report weekly-email-install
+.PHONY: install test self-test validate run run-full loop status discover analyze coverage backlog sync-mirror design login-install login-uninstall agent-status ensure-running daemon-start daemon-stop daemon-status execute llm-status weekly-report send-weekly-report weekly-email-install health-check send-health-alert health-alert-install
 
 ROOT := $(shell pwd)
 GATEWAY_REPO ?= /Users/sk/Desktop/untitled folder/new design
@@ -97,6 +97,15 @@ send-weekly-report:
 
 weekly-email-install:
 	bash ./scripts/install_weekly_email.sh
+
+health-check:
+	python3 -m gateway_enhancement_agent health-check
+
+send-health-alert:
+	python3 -m gateway_enhancement_agent send-health-alert --force
+
+health-alert-install:
+	bash ./scripts/install_health_alert.sh
 
 setup-clone:
 	bash ./scripts/setup_target_clone.sh "$${TARGET_REPO}" "$${HOME}/Library/Application Support/gateway-enhancement-agent/target-clone"

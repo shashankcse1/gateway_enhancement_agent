@@ -72,7 +72,25 @@ class CodeImplementer:
             )
 
         if self.parallel_config.enabled:
-            return self._implement_parallel(gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model)
+            parallel_result = self._implement_parallel(
+                gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model
+            )
+            if (
+                not parallel_result.succeeded
+                and parallel_result.attempted
+                and (
+                    not parallel_result.files_written
+                    or (parallel_result.error or "").startswith("No file blocks")
+                    or "No file blocks" in (parallel_result.skipped_reason or "")
+                )
+            ):
+                single_result = self._implement_single(
+                    gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model
+                )
+                if single_result.succeeded:
+                    single_result.implementation_mode = "single_fallback"
+                    return single_result
+            return parallel_result
         return self._implement_single(gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model)
 
     def _implement_parallel(

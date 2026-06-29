@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import load_json, target_repo
+from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.file_blocks import extract_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
@@ -103,8 +104,9 @@ class ParallelOrchestrator:
     )
     REVIEW_INSTRUCTION = (
         "Respond with a structured review markdown. Include sections: Summary, Findings, "
-        "Risk level (LOW/MEDIUM/HIGH), and Verdict (APPROVE or BLOCKER). "
-        "Use BLOCKER only for security, audit, or production-safety issues that must not merge."
+        "Risk level (LOW/MEDIUM/HIGH), and a final line `Verdict: APPROVE` or `Verdict: BLOCKER`. "
+        "Use BLOCKER only when the merged proposal is unsafe to apply as-is. "
+        "Use APPROVE when authz, audit, tests, and operational controls in the proposal address the risks."
     )
 
     def __init__(
@@ -331,12 +333,12 @@ Produce file blocks ONLY for files in your component scope.
     def _worker_context(self, repo: Path, worker: WorkerSpec, shared_context: str) -> str:
         chunks: list[str] = []
         for rel in worker.path_hints:
-            full = repo / rel
-            if full.is_file():
-                text = full.read_text(encoding="utf-8", errors="replace")
-                if len(text) > self.llm_config.max_file_chars // 2:
-                    text = text[: self.llm_config.max_file_chars // 2] + "\n... [truncated]"
-                chunks.append(f"### `{rel}`\n```\n{text}\n```")
+            text = read_repo_file(rel)
+            if not text:
+                continue
+            if len(text) > self.llm_config.max_file_chars // 2:
+                text = text[: self.llm_config.max_file_chars // 2] + "\n... [truncated]"
+            chunks.append(f"### `{rel}`\n```\n{text}\n```")
         if chunks:
             return "\n\n".join(chunks)
         return shared_context

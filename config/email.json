@@ -12,5 +12,15 @@
   "smtp_port": 25,
   "smtp_use_tls": false,
   "smtp_auth": false,
-  "history_days": 1
+  "history_days": 1,
+  "health_alert": {
+    "enabled": true,
+    "check_interval_minutes": 30,
+    "max_stale_hours": 3,
+    "stuck_running_hours": 2,
+    "consecutive_failure_threshold": 3,
+    "alert_cooldown_hours": 2,
+    "launch_agent_label": "com.gateway.enhancement-agent",
+    "check_ollama": true
+  }
 }

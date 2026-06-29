@@ -29,7 +29,7 @@ else
   git -C "${DEST}" reset --hard "${COMMIT}"
 fi
 
-# Propagate remotes from source (origin, bitbucket).
+# Propagate remotes from source (origin).
 while IFS= read -r remote; do
   url="$(git -C "${SOURCE}" remote get-url "${remote}" 2>/dev/null || true)"
   if [[ -z "$url" ]]; then
