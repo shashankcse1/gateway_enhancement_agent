@@ -7,11 +7,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import target_repo
-from gateway_enhancement_agent.file_blocks import apply_file_blocks
+from gateway_enhancement_agent.file_blocks import apply_file_blocks, extract_file_blocks
+from gateway_enhancement_agent.delivery_config import filter_blocks_for_delivery
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
 from gateway_enhancement_agent.repo_access import read_repo_file
+from gateway_enhancement_agent.security_guardrails import SecurityGuardrails
 
 
 @dataclass
@@ -35,7 +37,9 @@ class CodeImplementer:
         "```file:backend/path/to/file.py\n"
         "<full file contents>\n"
         "```\n"
-        "Use paths relative to the repository root. Do not include secrets or .env files."
+        "Use paths relative to the repository root. Place tests under `backend/tests/` never `backend/app/tests/`. "
+        "When editing large existing files, output the COMPLETE file — never truncate. "
+        "Do not include secrets or .env files."
     )
 
     def __init__(self, config: LLMConfig | None = None, client: LocalLLMClient | None = None) -> None:
@@ -129,10 +133,32 @@ class CodeImplementer:
                     error="Role-lens BLOCKER: " + "; ".join(parallel.review_guardrail_result.violations),
                 )
             llm_path = artifact_dir / "local_llm_response.md"
+            blocks, dropped = filter_blocks_for_delivery(parallel.merged_blocks, repo)
+            parallel.merged_blocks = blocks
+            if blocks:
+                parallel.merged_response = ParallelOrchestrator._blocks_to_response(blocks)
             llm_path.write_text(parallel.merged_response, encoding="utf-8")
+            if not blocks:
+                return ImplementResult(
+                    attempted=True,
+                    succeeded=False,
+                    model=model,
+                    implementation_mode="parallel",
+                    error=parallel.error or "No deliverable file blocks after filtering forbidden overwrites",
+                    skipped_reason="All proposed files were forbidden overwrites or empty",
+                )
+            pre_apply = SecurityGuardrails().check_blocks(blocks, repo_root=repo)
+            if not pre_apply.passed:
+                return ImplementResult(
+                    attempted=True,
+                    succeeded=False,
+                    model=model,
+                    implementation_mode="parallel",
+                    error="Pre-apply guardrails: " + "; ".join(pre_apply.violations),
+                )
             files_written = apply_file_blocks(
                 repo,
-                parallel.merged_response,
+                "\n\n".join(f"```file:{p}\n{c.rstrip()}\n```" for p, c in sorted(blocks.items())),
                 allowed_prefixes=self.config.allowed_path_prefixes,
             )
             succeeded = bool(files_written)
@@ -198,6 +224,16 @@ Implement the smallest correct slice for this gap. Output complete files to crea
             response = self.client.chat(system=system, user=user)
             llm_path = artifact_dir / "local_llm_response.md"
             llm_path.write_text(response, encoding="utf-8")
+            blocks = extract_file_blocks(response)
+            pre_apply = SecurityGuardrails().check_blocks(blocks, repo_root=repo)
+            if not pre_apply.passed:
+                return ImplementResult(
+                    attempted=True,
+                    succeeded=False,
+                    model=model,
+                    implementation_mode="single",
+                    error="Pre-apply guardrails: " + "; ".join(pre_apply.violations),
+                )
             files_written = apply_file_blocks(
                 repo,
                 response,

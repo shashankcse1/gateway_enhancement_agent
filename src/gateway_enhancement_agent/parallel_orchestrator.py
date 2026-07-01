@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import load_json, target_repo
+from gateway_enhancement_agent.delivery_config import DeliveryConfig
 from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.file_blocks import extract_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
@@ -39,6 +40,7 @@ class ParallelConfig:
     @classmethod
     def from_env(cls) -> ParallelConfig:
         raw = load_json("parallel_workers.json")
+        delivery = DeliveryConfig.from_env()
         env_on = os.environ.get("PARALLEL_IMPLEMENT", "").strip().lower()
         enabled = bool(raw.get("enabled", True))
         if env_on in {"0", "false", "no"}:
@@ -58,9 +60,13 @@ class ParallelConfig:
             )
             for w in raw.get("workers", [])
         ]
+        preferred = delivery.prefer_implement_workers
+        if preferred:
+            order = {wid: idx for idx, wid in enumerate(preferred)}
+            workers.sort(key=lambda w: (0 if w.stage == "implement" else 1, order.get(w.worker_id, 99), w.worker_id))
         return cls(
             enabled=enabled,
-            max_workers=int(os.environ.get("PARALLEL_MAX_WORKERS", raw.get("max_workers", 8))),
+            max_workers=int(os.environ.get("PARALLEL_MAX_WORKERS", delivery.max_parallel_workers)),
             synthesizer_enabled=bool(raw.get("synthesizer_enabled", True)),
             run_review_stage=bool(raw.get("run_review_stage", True)),
             workers=workers,
@@ -100,7 +106,9 @@ class ParallelOrchestrator:
         "```file:backend/path/to/file.py\n"
         "<full file contents>\n"
         "```\n"
-        "Use paths relative to the repository root. Do not include secrets."
+        "Use paths relative to the repository root. Place tests under `backend/tests/` never `backend/app/tests/`. "
+        "When editing large existing files, output the COMPLETE file — never truncate. "
+        "Do not include secrets."
     )
     REVIEW_INSTRUCTION = (
         "Respond with a structured review markdown. Include sections: Summary, Findings, "
@@ -146,7 +154,14 @@ class ParallelOrchestrator:
         )
 
         merged = self._merge_results(gap, cycle_id, design_brief, implement_results, artifact_dir)
-        merged.guardrail_result = self.guardrails.check_blocks(merged.merged_blocks)
+        from gateway_enhancement_agent.delivery_config import filter_blocks_for_delivery
+
+        repo = target_repo()
+        filtered_blocks, dropped = filter_blocks_for_delivery(merged.merged_blocks, repo)
+        if dropped:
+            merged.merged_blocks = filtered_blocks
+            merged.merged_response = self._blocks_to_response(filtered_blocks)
+        merged.guardrail_result = self.guardrails.check_blocks(merged.merged_blocks, repo_root=repo)
 
         review_results: list[SubagentResult] = []
         if self.parallel_config.run_review_stage and merged.merged_blocks:

@@ -23,12 +23,12 @@ class CombinedValidation:
         return all(r.passed for r in required)
 
 
-def run_combined_validation() -> CombinedValidation:
+def run_combined_validation(*, changed_files: list[str] | None = None) -> CombinedValidation:
     self_runner = SelfTestRunner()
     target_runner = ValidationRunner()
     return CombinedValidation(
         self_results=self_runner.run_all(),
-        target_results=target_runner.run_all(),
+        target_results=target_runner.run_all(changed_files=changed_files),
     )
 
 

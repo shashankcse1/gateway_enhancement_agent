@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "blocked_path_patterns": [".env", ".pem", ".key", "credentials", "secrets/", "id_rsa"],
+  "blocked_path_patterns": [".env", ".pem", ".key", "credentials", "secrets/", "id_rsa", "backend/app/tests/"],
   "blocked_content_patterns": [
     "AKIA[0-9A-Z]{16}",
     "password\\s*=\\s*['\"][^'\"]+['\"]",

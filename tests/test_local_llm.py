@@ -44,7 +44,7 @@ def test_local_llm_health_when_reachable() -> None:
     assert health.model_available is True
 
 
-def test_code_implementer_applies_file_blocks(mock_target_repo) -> None:
+def test_code_implementer_applies_file_blocks(mock_target_repo, monkeypatch) -> None:
     gap = GapItem(
         gap_id="inv-001",
         title="DELETE /v1/responses/{id}",
@@ -81,14 +81,16 @@ def test_code_implementer_applies_file_blocks(mock_target_repo) -> None:
         error=None,
     )
     client.chat.return_value = (
-        "```file:backend/app/routers/gateway.py\n"
-        '@router.delete("/v1/responses/{id}")\n'
-        "async def delete_response():\n"
-        "    return {}\n"
+        "```file:backend/tests/test_delete_response.py\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n\n"
+        "def test_delete_response():\n"
+        "    assert TestClient(app).get('/gateway/routes').status_code in (200, 403)\n"
         "```"
     )
     artifact_dir = mock_target_repo / "artifacts" / "cycle-0001"
     artifact_dir.mkdir(parents=True)
+    monkeypatch.setenv("PARALLEL_IMPLEMENT", "0")
     result = CodeImplementer(cfg, client).implement(
         gap,
         cycle_id=1,
@@ -96,8 +98,8 @@ def test_code_implementer_applies_file_blocks(mock_target_repo) -> None:
         artifact_dir=artifact_dir,
     )
     assert result.succeeded is True
-    assert "backend/app/routers/gateway.py" in result.files_written
-    written = (mock_target_repo / "backend/app/routers/gateway.py").read_text(encoding="utf-8")
+    assert "backend/tests/test_delete_response.py" in result.files_written
+    written = (mock_target_repo / "backend/tests/test_delete_response.py").read_text(encoding="utf-8")
     assert "delete_response" in written
 
 

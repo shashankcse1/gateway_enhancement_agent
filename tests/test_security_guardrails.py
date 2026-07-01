@@ -31,3 +31,24 @@ def test_check_reviews_blocks_mandatory_explicit_blocker() -> None:
     result = guard.check_reviews(reviews)
     assert result.passed is False
     assert any("ciso_lens" in v for v in result.violations)
+
+
+def test_check_blocks_rejects_syntax_error(tmp_path) -> None:
+    guard = SecurityGuardrails()
+    result = guard.check_blocks(
+        {"backend/tests/test_bad.py": "def broken(\n"},
+        repo_root=tmp_path,
+    )
+    assert result.passed is False
+    assert any("syntax" in v.lower() for v in result.violations)
+
+
+def test_check_blocks_rejects_truncated_gateway(tmp_path) -> None:
+    guard = SecurityGuardrails()
+    short = "from fastapi import APIRouter\nrouter = APIRouter()\n"
+    result = guard.check_blocks(
+        {"backend/app/routers/gateway.py": short},
+        repo_root=tmp_path,
+    )
+    assert result.passed is False
+    assert any("truncated" in v.lower() or "only" in v.lower() for v in result.violations)

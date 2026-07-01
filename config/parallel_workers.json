@@ -1,20 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "enabled": true,
-  "max_workers": 8,
+  "max_workers": 1,
   "synthesizer_enabled": true,
   "run_review_stage": true,
   "workers": [
-    {
-      "id": "backend_contract",
-      "label": "Backend API contract",
-      "stage": "implement",
-      "component": "gateway-router",
-      "role_lens": null,
-      "write_mode": "patch",
-      "focus": "Implement or extend gateway router handlers, services, authz hooks, and audit emission for the gap route.",
-      "path_hints": ["backend/app/routers/gateway.py", "backend/AGENTS.md"]
-    },
     {
       "id": "backend_tests",
       "label": "Backend tests",
@@ -22,18 +12,8 @@
       "component": "gateway-validation",
       "role_lens": "security_engineer",
       "write_mode": "patch",
-      "focus": "Add focused pytest including allow and deny paths, abuse cases, and regression coverage for changed surfaces.",
-      "path_hints": ["backend/tests/test_gateway_routes.py", "backend/tests/test_gateway_inference.py"]
-    },
-    {
-      "id": "frontend_ui",
-      "label": "Operator UI",
-      "stage": "implement",
-      "component": "gateway-operator-ui",
-      "role_lens": "frontend_ui_expert",
-      "write_mode": "patch",
-      "focus": "Wire control-center UI when API inventory marks Partial/Gap. Use component partials; preserve accessibility.",
-      "path_hints": ["frontend/app.js", "frontend/views/routing-gateway.html"]
+      "focus": "Add focused pytest under backend/tests/ using TestClient(app) from app.main. Include allow and deny paths. Do NOT import modules that do not exist. Follow patterns in test_gateway_routes.py.",
+      "path_hints": ["backend/tests/test_gateway_routes.py", "backend/tests/test_gateway_inference.py", "backend/AGENTS.md"]
     },
     {
       "id": "governance_docs",
@@ -42,12 +22,31 @@
       "component": "gateway-governance",
       "role_lens": null,
       "write_mode": "patch",
-      "focus": "Update API inventory, coverage map, and risk register when behavior or privileged actions change.",
+      "focus": "Update API inventory and coverage map when the gap is addressed. Mark UI coverage accurately.",
       "path_hints": [
         "backend/docs/governance/api-inventory-and-ui-map.md",
-        "backend/docs/governance/ui-api-design-coverage-map.md",
-        "backend/docs/security/residual-and-accepted-risk-register.md"
+        "backend/docs/governance/ui-api-design-coverage-map.md"
       ]
+    },
+    {
+      "id": "backend_service",
+      "label": "Backend service module",
+      "stage": "implement",
+      "component": "gateway-router",
+      "role_lens": null,
+      "write_mode": "patch",
+      "focus": "Create a NEW focused module under backend/app/services/ for the gap. Do NOT output backend/app/routers/gateway.py or frontend/app.js.",
+      "path_hints": ["backend/app/services/", "backend/AGENTS.md"]
+    },
+    {
+      "id": "frontend_ui",
+      "label": "Operator UI",
+      "stage": "implement",
+      "component": "gateway-operator-ui",
+      "role_lens": "frontend_ui_expert",
+      "write_mode": "patch",
+      "focus": "Wire control-center UI in frontend/views/ when API inventory marks Partial/Gap. Do NOT output frontend/app.js.",
+      "path_hints": ["frontend/views/routing-gateway.html", "frontend/app.js"]
     },
     {
       "id": "security_architect",

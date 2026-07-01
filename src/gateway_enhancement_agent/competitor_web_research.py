@@ -116,6 +116,9 @@ class CompetitorWebResearcher:
         self.cache_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     def cache_stale(self) -> bool:
+        from gateway_enhancement_agent.delivery_config import DeliveryConfig
+
+        delivery = DeliveryConfig.from_env()
         cache = self.load_cache()
         updated = cache.get("updated_at")
         if not updated:
@@ -124,7 +127,8 @@ class CompetitorWebResearcher:
             ts = datetime.fromisoformat(updated.replace("Z", "+00:00"))
         except ValueError:
             return True
-        return datetime.now(timezone.utc) - ts > timedelta(hours=self.config.cache_ttl_hours)
+        hours = delivery.refresh_competitor_research_hours
+        return datetime.now(timezone.utc) - ts > timedelta(hours=hours)
 
     def refresh(self, *, force: bool = False) -> dict[str, Any]:
         if not self.config.enabled:

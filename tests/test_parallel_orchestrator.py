@@ -28,14 +28,14 @@ def test_parallel_orchestrator_merges_non_conflicting_workers(mock_target_repo, 
         synthesizer_enabled=True,
         run_review_stage=False,
         workers=[
-            WorkerSpec("backend_contract", "Backend", "backend", ["backend/app/routers/gateway.py"], stage="implement"),
-            WorkerSpec("backend_tests", "Tests", "tests", ["backend/tests/test_gateway_routes.py"], stage="implement"),
+            WorkerSpec("backend_tests", "Tests", "tests", [], stage="implement"),
+            WorkerSpec("governance_docs", "Docs", "docs", [], stage="implement"),
         ],
     )
     client = MagicMock()
     client.chat.side_effect = [
-        '```file:backend/app/routers/gateway.py\n@router.delete("/v1/responses/{id}")\n```',
-        '```file:backend/tests/test_gateway_routes.py\ndef test_delete():\n    assert True\n```',
+        '```file:backend/tests/test_a.py\nassert True\n```',
+        '```file:backend/tests/test_b.py\nassert True\n```',
     ]
     artifact_dir = tmp_path / "cycle-0001"
     artifact_dir.mkdir()
@@ -47,9 +47,9 @@ def test_parallel_orchestrator_merges_non_conflicting_workers(mock_target_repo, 
         artifact_dir=artifact_dir,
     )
     assert len(result.subagents) == 2
-    assert result.merged_blocks["backend/app/routers/gateway.py"].startswith("@router")
-    assert "test_delete" in result.merged_blocks["backend/tests/test_gateway_routes.py"]
-    assert (artifact_dir / "subagents" / "backend_contract.md").exists()
+    assert result.merged_blocks["backend/tests/test_a.py"].startswith("assert")
+    assert result.merged_blocks["backend/tests/test_b.py"].startswith("assert")
+    assert (artifact_dir / "subagents" / "backend_tests.md").exists()
 
 
 def test_parallel_orchestrator_uses_synthesizer_on_conflict(mock_target_repo, tmp_path) -> None:
@@ -59,15 +59,15 @@ def test_parallel_orchestrator_uses_synthesizer_on_conflict(mock_target_repo, tm
         synthesizer_enabled=True,
         run_review_stage=False,
         workers=[
-            WorkerSpec("backend_contract", "Backend", "backend", [], stage="implement"),
             WorkerSpec("backend_tests", "Tests", "tests", [], stage="implement"),
+            WorkerSpec("governance_docs", "Docs", "docs", [], stage="implement"),
         ],
     )
     client = MagicMock()
     client.chat.side_effect = [
-        '```file:backend/app/routers/gateway.py\nversion_a\n```',
-        '```file:backend/app/routers/gateway.py\nversion_b\n```',
-        '```file:backend/app/routers/gateway.py\nmerged_final\n```',
+        '```file:backend/tests/test_x.py\nversion_a\n```',
+        '```file:backend/tests/test_x.py\nversion_b\n```',
+        '```file:backend/tests/test_x.py\nmerged_final\n```',
     ]
     artifact_dir = tmp_path / "cycle-0002"
     artifact_dir.mkdir()
@@ -79,5 +79,5 @@ def test_parallel_orchestrator_uses_synthesizer_on_conflict(mock_target_repo, tm
         artifact_dir=artifact_dir,
     )
     assert result.synthesizer_used is True
-    assert "merged_final" in result.merged_blocks["backend/app/routers/gateway.py"]
+    assert "merged_final" in result.merged_blocks["backend/tests/test_x.py"]
     assert client.chat.call_count == 3

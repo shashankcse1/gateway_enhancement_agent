@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gateway_enhancement_agent.config import load_json, target_repo
+from gateway_enhancement_agent.config import load_json, source_root, target_repo
+
+_DEFAULT_TOOL_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 
 @dataclass
@@ -27,17 +31,42 @@ class ValidationRunner:
         self.repo = repo or target_repo()
         self.config = load_json(config_name)
 
-    def run_all(self) -> list[GateResult]:
+    def run_all(self, *, changed_files: list[str] | None = None) -> list[GateResult]:
         results: list[GateResult] = []
         for gate in self.config.get("gates", []):
-            results.append(self._run_gate(gate))
+            results.append(self._run_gate(gate, changed_files=changed_files))
         return results
 
-    def _run_gate(self, gate: dict[str, Any]) -> GateResult:
+    def _run_gate(self, gate: dict[str, Any], *, changed_files: list[str] | None = None) -> GateResult:
+        gate_id = gate.get("id", "")
+        if changed_files:
+            if gate_id == "frontend_syntax" and not any(f.startswith("frontend/") for f in changed_files):
+                return GateResult(
+                    gate_id=gate_id,
+                    label=gate["label"],
+                    required=bool(gate.get("required", True)),
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="skipped (no frontend files changed)",
+                    stderr_tail="",
+                )
+            if gate_id == "security_smoke" and not any(f.startswith("frontend/") for f in changed_files):
+                return GateResult(
+                    gate_id=gate_id,
+                    label=gate["label"],
+                    required=bool(gate.get("required", True)),
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="skipped (no frontend files changed)",
+                    stderr_tail="",
+                )
         cwd_rel = gate.get("cwd", ".")
         cwd = self.repo if cwd_rel == "." else self.repo / cwd_rel
-        command = list(gate["command"])
+        command = self._resolve_command(list(gate["command"]), cwd=cwd, changed_files=changed_files)
         timeout = int(gate.get("timeout_seconds", 300))
+        env = os.environ.copy()
+        prefix = os.environ.get("AGENT_TOOL_PATH", _DEFAULT_TOOL_PATH)
+        env["PATH"] = f"{prefix}:{env.get('PATH', '')}"
         try:
             proc = subprocess.run(
                 command,
@@ -45,6 +74,7 @@ class ValidationRunner:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=env,
             )
             passed = proc.returncode == 0
             return GateResult(
@@ -131,3 +161,39 @@ class ValidationRunner:
             if not r.passed
         ]
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    def _resolve_command(self, command: list[str], *, cwd: Path, changed_files: list[str] | None = None) -> list[str]:
+        python_bin = self._python_for_cwd(cwd)
+        resolved: list[str] = []
+        for part in command:
+            if part == "python3":
+                resolved.append(python_bin)
+            else:
+                resolved.append(part)
+        if not changed_files or "pytest" not in resolved or "-m" not in resolved:
+            return resolved
+        test_files = [f for f in changed_files if f.startswith("backend/tests/") and f.endswith(".py")]
+        only_tests = test_files and not any(
+            f for f in changed_files if f.startswith("backend/") and not f.startswith("backend/tests/")
+        )
+        if not only_tests:
+            return resolved
+        m_idx = resolved.index("-m")
+        first_test_idx = m_idx + 2
+        while first_test_idx < len(resolved) and not resolved[first_test_idx].startswith("tests/"):
+            first_test_idx += 1
+        if first_test_idx < len(resolved):
+            resolved = resolved[:first_test_idx] + test_files
+        return resolved
+
+    def _python_for_cwd(self, cwd: Path) -> str:
+        override = os.environ.get("GATEWAY_PYTHON", "").strip()
+        if override:
+            return override
+        if self.repo.resolve() == source_root().resolve():
+            return sys.executable
+        repo_root = target_repo().resolve()
+        venv_py = repo_root / "backend" / ".venv" / "bin" / "python"
+        if venv_py.is_file():
+            return str(venv_py)
+        return sys.executable

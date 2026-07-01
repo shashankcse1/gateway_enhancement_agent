@@ -42,4 +42,13 @@ while IFS= read -r remote; do
   fi
 done < <(git -C "${SOURCE}" remote)
 
+CLONE_BACKEND="${DEST}/backend"
+if [[ -f "${CLONE_BACKEND}/requirements.txt" ]]; then
+  if [[ ! -x "${CLONE_BACKEND}/.venv/bin/python" ]]; then
+    python3 -m venv "${CLONE_BACKEND}/.venv"
+  fi
+  "${CLONE_BACKEND}/.venv/bin/pip" install -q --upgrade pip
+  "${CLONE_BACKEND}/.venv/bin/pip" install -q -r "${CLONE_BACKEND}/requirements.txt"
+fi
+
 echo "Agent clone ready: ${DEST} on ${BRANCH} (${COMMIT:0:8})"

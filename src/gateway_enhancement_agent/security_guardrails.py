@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 
-from gateway_enhancement_agent.config import load_json
+from gateway_enhancement_agent.config import load_json, target_repo
+from gateway_enhancement_agent.delivery_config import DeliveryConfig
+from gateway_enhancement_agent.file_blocks import normalize_repo_path
+
+_MIN_LINES_DEFAULT: dict[str, int] = {
+    "backend/app/routers/gateway.py": 500,
+}
 
 
 @dataclass
@@ -47,19 +53,40 @@ class SecurityGuardrails:
             if lens.get("mandatory", False)
         }
 
-    def check_blocks(self, blocks: dict[str, str]) -> GuardrailResult:
+    def check_blocks(self, blocks: dict[str, str], *, repo_root=None) -> GuardrailResult:
+        delivery = DeliveryConfig.from_env()
+        repo = repo_root or target_repo()
         violations: list[str] = []
         warnings: list[str] = []
-        for rel, content in blocks.items():
+        min_lines_map = {**_MIN_LINES_DEFAULT, **delivery.min_lines_large_files}
+        for raw_rel, content in blocks.items():
+            rel = normalize_repo_path(raw_rel)
             lower = rel.lower()
+            if delivery.is_forbidden_overwrite(rel) and (repo / rel).is_file():
+                violations.append(
+                    f"Full overwrite of `{rel}` is forbidden — add tests/docs/services instead"
+                )
             for pattern in self.blocked_path_patterns:
                 if pattern.lower() in lower:
                     violations.append(f"Blocked path pattern `{pattern}` in `{rel}`")
+            if rel.startswith("backend/app/tests/"):
+                violations.append(f"Tests must live under `backend/tests/`, not `{rel}`")
             if len(content.encode("utf-8")) > self.max_file_bytes:
                 violations.append(f"File `{rel}` exceeds max size ({self.max_file_bytes} bytes)")
             for regex in self.blocked_content_patterns:
                 if regex.search(content):
                     violations.append(f"Blocked secret pattern in `{rel}`")
+            if rel.endswith(".py"):
+                try:
+                    ast.parse(content)
+                except SyntaxError as exc:
+                    violations.append(f"Python syntax error in `{rel}`: {exc.msg}")
+            min_lines = min_lines_map.get(rel)
+            line_count = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+            if min_lines and line_count < min_lines:
+                violations.append(
+                    f"File `{rel}` has only {line_count} lines; likely truncated overwrite (min {min_lines})"
+                )
             if any(rel.endswith(p) or rel == p for p in self.require_review_for_paths):
                 warnings.append(f"Privileged path modified: `{rel}` — role-lens review required")
         return GuardrailResult(passed=not violations, violations=violations, warnings=warnings)

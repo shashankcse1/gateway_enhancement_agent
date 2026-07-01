@@ -103,6 +103,10 @@ export TARGET_REPO_MIRROR="${SUPPORT}/target-mirror"
 export AGENT_CONFIG_DIR="${SUPPORT}/config"
 export GIT_PUSH_REMOTES="\${GIT_PUSH_REMOTES:-origin}"
 export AGENT_BACKGROUND_MODE="1"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\${PATH:-}"
+export AGENT_TOOL_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+export OLLAMA_SERIAL="1"
+export PARALLEL_MAX_WORKERS="1"
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"
 SCRIPT

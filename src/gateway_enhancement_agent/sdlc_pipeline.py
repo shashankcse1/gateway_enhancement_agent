@@ -187,7 +187,7 @@ class SDLCPipeline:
 
     def _phase_validate(self, cycle: CycleState) -> CycleState:
         cycle.phase = "validate"
-        combined = run_combined_validation()
+        combined = run_combined_validation(changed_files=list(cycle.metadata.get("local_implementation_files") or []))
         summary = combined_summary(combined)
         self.store.write_json(cycle.cycle_id, "validation_report.json", summary)
         self.store.write_text(

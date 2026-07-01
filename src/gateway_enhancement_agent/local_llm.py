@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
 from gateway_enhancement_agent.config import load_json
+from gateway_enhancement_agent.delivery_config import DeliveryConfig
+
+_CHAT_LOCK = threading.Lock()
 
 
 @dataclass
@@ -98,6 +102,13 @@ class LocalLLMClient:
             )
 
     def chat(self, *, system: str, user: str) -> str:
+        delivery = DeliveryConfig.from_env()
+        if delivery.serial_llm:
+            with _CHAT_LOCK:
+                return self._chat_unlocked(system=system, user=user)
+        return self._chat_unlocked(system=system, user=user)
+
+    def _chat_unlocked(self, *, system: str, user: str) -> str:
         models = self._list_models()
         model = self._pick_model(models)
         if not model:

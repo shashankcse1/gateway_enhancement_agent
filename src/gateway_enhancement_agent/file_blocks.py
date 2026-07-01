@@ -11,11 +11,23 @@ FILE_BLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 
+_PATH_REWRITES = (
+    ("backend/app/tests/", "backend/tests/"),
+)
+
+
+def normalize_repo_path(rel: str) -> str:
+    rel = rel.strip().lstrip("./")
+    for old, new in _PATH_REWRITES:
+        if rel.startswith(old):
+            return new + rel[len(old) :]
+    return rel
+
 
 def extract_file_blocks(text: str) -> dict[str, str]:
     blocks: dict[str, str] = {}
     for match in FILE_BLOCK_RE.finditer(text):
-        rel = match.group(1).strip().lstrip("./")
+        rel = normalize_repo_path(match.group(1).strip())
         content = match.group(2)
         if not content.endswith("\n"):
             content += "\n"
@@ -44,5 +56,7 @@ def apply_file_blocks(
 
 def _allowed_path(rel: str, allowed_prefixes: list[str]) -> bool:
     if ".." in Path(rel).parts:
+        return False
+    if rel.startswith("backend/app/tests/"):
         return False
     return any(rel.startswith(prefix) for prefix in allowed_prefixes)

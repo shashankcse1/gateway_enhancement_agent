@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "serial_llm": true,
+  "max_parallel_workers": 1,
+  "refresh_competitor_research_hours": 24,
+  "forbidden_overwrite_paths": [
+    "backend/app/routers/gateway.py",
+    "frontend/app.js"
+  ],
+  "prefer_implement_workers": ["backend_tests", "governance_docs", "backend_service", "frontend_ui"],
+  "min_lines_large_files": {
+    "backend/app/routers/gateway.py": 500
+  }
+}
