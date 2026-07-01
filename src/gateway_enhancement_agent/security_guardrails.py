@@ -87,6 +87,17 @@ class SecurityGuardrails:
                 violations.append(
                     f"File `{rel}` has only {line_count} lines; likely truncated overwrite (min {min_lines})"
                 )
+            existing = repo / rel
+            if existing.is_file() and rel.startswith("backend/docs/governance/"):
+                try:
+                    existing_lines = len(existing.read_text(encoding="utf-8").splitlines())
+                except OSError:
+                    existing_lines = 0
+                if existing_lines >= 80 and line_count < int(existing_lines * 0.5):
+                    violations.append(
+                        f"File `{rel}` shrinks from {existing_lines} to {line_count} lines; "
+                        "likely truncated governance overwrite"
+                    )
             if any(rel.endswith(p) or rel == p for p in self.require_review_for_paths):
                 warnings.append(f"Privileged path modified: `{rel}` — role-lens review required")
         return GuardrailResult(passed=not violations, violations=violations, warnings=warnings)

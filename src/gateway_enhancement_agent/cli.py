@@ -20,7 +20,7 @@ from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.mirror_sync import sync_mirror
-from gateway_enhancement_agent.progress_log import log, log_file_path, log_hint
+from gateway_enhancement_agent.progress_log import log_file_path, log_hint, verbose_stderr
 from gateway_enhancement_agent.state_store import StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
 from gateway_enhancement_agent.sdlc_validate import (
@@ -47,11 +47,70 @@ def cmd_status(_: argparse.Namespace) -> int:
     store = StateStore()
     state = store.load()
     repo = target_repo()
-    print(f"Target repo: {repo}")
+    source = os.environ.get("TARGET_REPO_SOURCE", "").strip()
+    data_dir = os.environ.get("AGENT_DATA_DIR", "").strip()
+
+    print(f"Target repo:      {repo}")
+    if source and source != str(repo):
+        print(f"Source repo:      {source}")
+    if data_dir:
+        print(f"Data dir:         {data_dir}")
+    log_path = log_file_path()
+    if log_path:
+        print(f"Progress log:     {log_path}")
+        print(f"  tail -f \"{log_path}\"")
+
     print(f"Cycles completed: {state.get('cycle_count', 0)}")
     last = state.get("last_cycle")
     if last:
-        print(f"Last cycle: #{last.get('cycle_id')} status={last.get('status')} phase={last.get('phase')}")
+        print(
+            f"Last cycle:       #{last.get('cycle_id')} "
+            f"status={last.get('status')} phase={last.get('phase')}"
+        )
+        meta = last.get("metadata") or {}
+        gap = last.get("active_gap_id") or meta.get("active_gap_title")
+        if last.get("active_gap_id"):
+            title = meta.get("active_gap_title", "")
+            print(f"Active gap:       [{last.get('active_gap_id')}] {title}".rstrip())
+        impl = meta.get("local_implementation_succeeded")
+        if impl is True:
+            files = meta.get("local_implementation_files") or []
+            print(f"Implementation:   {len(files)} file(s) written")
+        elif meta.get("local_implementation_skipped"):
+            print(f"Implementation:   skipped — {meta['local_implementation_skipped']}")
+        elif impl is False and meta.get("local_implementation_attempted"):
+            print("Implementation:   attempted, not applied")
+        if meta.get("validation_passed") is not None:
+            print(f"Validation:       {'PASS' if meta.get('validation_passed') else 'FAIL'}")
+        if meta.get("merge_commit_sha"):
+            print(
+                f"Last merge:       {meta['merge_commit_sha'][:12]} "
+                f"pushed={meta.get('merge_pushed')}"
+            )
+        errors = last.get("errors") or []
+        if errors:
+            print("Last errors:")
+            for err in errors[:3]:
+                print(f"  - {err}")
+
+    cfg = LLMConfig.from_env()
+    health = LocalLLMClient(cfg).health()
+    print(
+        f"Ollama:           reachable={health.reachable} "
+        f"model={health.model} ready={health.model_available}"
+    )
+    if health.error:
+        print(f"  {health.error}")
+
+    from gateway_enhancement_agent.agent_health import HealthAlertConfig, launch_agent_status
+
+    launch = launch_agent_status(HealthAlertConfig.from_env().launch_agent_label)
+    pid = launch.get("pid")
+    running = launch.get("running")
+    print(f"LaunchAgent:      running={running}" + (f" pid={pid}" if pid else ""))
+    if launch.get("reason") and not running:
+        print(f"  {launch.get('reason')}")
+
     return 0
 
 
@@ -93,7 +152,7 @@ def cmd_analyze(_: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     log_path = log_file_path()
-    if log_path:
+    if log_path and verbose_stderr():
         log_hint(f"Progress log: tail -f {log_path}")
     cycle = SDLCPipeline().run_cycle(skip_validation=args.skip_validation)
     print(f"Cycle {cycle.cycle_id} finished: status={cycle.status}")

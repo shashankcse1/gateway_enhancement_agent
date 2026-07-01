@@ -54,3 +54,11 @@ def log_phase_done(phase: str, detail: str = "") -> None:
 
 def log_hint(message: str) -> None:
     log(message, phase="hint")
+
+
+def log_cycle_banner(cycle_id: int) -> None:
+    log(f"{'─' * 50}", phase="cycle")
+    log(f"cycle #{cycle_id} started", phase="cycle")
+    path = log_file_path()
+    if path is not None:
+        log_hint(f"tail -f {path}")

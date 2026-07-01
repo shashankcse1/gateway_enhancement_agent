@@ -45,8 +45,8 @@
       "component": "gateway-operator-ui",
       "role_lens": "frontend_ui_expert",
       "write_mode": "patch",
-      "focus": "Wire control-center UI in frontend/views/ when API inventory marks Partial/Gap. Do NOT output frontend/app.js.",
-      "path_hints": ["frontend/views/routing-gateway.html", "frontend/app.js"]
+      "focus": "Wire control-center UI in frontend/views/ when API inventory marks Partial/Gap. Do NOT output frontend/app.js or frontend/views/routing-gateway.html — add small partials only.",
+      "path_hints": ["frontend/views/", "frontend/app.js"]
     },
     {
       "id": "security_architect",

@@ -4,8 +4,20 @@ from gateway_enhancement_agent.sdlc_validate import (
     CombinedValidation,
     combined_report_markdown,
     combined_summary,
+    run_combined_validation,
 )
 from gateway_enhancement_agent.validation_runner import GateResult
+
+
+def test_combined_validation_skips_target_when_no_changes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "gateway_enhancement_agent.sdlc_validate.SelfTestRunner.run_all",
+        lambda self: [GateResult("agent_unit_tests", "Agent tests", True, True, 0, "", "")],
+    )
+    combined = run_combined_validation(changed_files=[])
+    summary = combined_summary(combined)
+    assert summary["target_validation_passed"] is True
+    assert combined.target_results == []
 
 
 def test_combined_summary_pass_fail() -> None:

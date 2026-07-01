@@ -43,6 +43,20 @@ def test_check_blocks_rejects_syntax_error(tmp_path) -> None:
     assert any("syntax" in v.lower() for v in result.violations)
 
 
+def test_check_blocks_rejects_truncated_governance_shrink(tmp_path) -> None:
+    guard = SecurityGuardrails()
+    gov = tmp_path / "backend/docs/governance/api-inventory-and-ui-map.md"
+    gov.parent.mkdir(parents=True)
+    gov.write_text("\n".join(f"line {i}" for i in range(200)), encoding="utf-8")
+    short = "# shrunk\n\nonly a few lines\n"
+    result = guard.check_blocks(
+        {"backend/docs/governance/api-inventory-and-ui-map.md": short},
+        repo_root=tmp_path,
+    )
+    assert result.passed is False
+    assert any("shrinks" in v.lower() for v in result.violations)
+
+
 def test_check_blocks_rejects_truncated_gateway(tmp_path) -> None:
     guard = SecurityGuardrails()
     short = "from fastapi import APIRouter\nrouter = APIRouter()\n"

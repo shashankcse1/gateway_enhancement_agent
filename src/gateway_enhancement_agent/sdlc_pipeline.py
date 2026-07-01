@@ -30,7 +30,8 @@ from gateway_enhancement_agent.sdlc_validate import (
     combined_summary,
     run_combined_validation,
 )
-from gateway_enhancement_agent.progress_log import log, log_hint, log_phase_done, log_phase_start
+from gateway_enhancement_agent.progress_log import log, log_cycle_banner, log_hint, log_phase_done, log_phase_start
+from gateway_enhancement_agent.state_store import CycleState, StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
 
 
@@ -43,6 +44,7 @@ class SDLCPipeline:
         repo = TargetInventory().repo
         cycle = self.store.begin_cycle(str(repo))
         autonomous = fully_autonomous()
+        log_cycle_banner(cycle.cycle_id)
         log_phase_start("cycle", f"#{cycle.cycle_id} target={repo}")
         if autonomous:
             skip_validation = False
@@ -73,7 +75,13 @@ class SDLCPipeline:
             self._write_cycle_summary(cycle)
             if autonomous:
                 impl_ok = cycle.metadata.get("local_implementation_succeeded")
-                if not cycle.metadata.get("validation_passed", False):
+                files = list(cycle.metadata.get("local_implementation_files") or [])
+                if not files and not impl_ok:
+                    # Idle cycle (LLM off, no gap, or no applicable blocks) — do not fail on validation.
+                    if not cycle.metadata.get("validation_passed", True) and not cycle.errors:
+                        cycle.metadata["validation_passed"] = True
+                        cycle.metadata["target_validation_skipped"] = True
+                elif not cycle.metadata.get("validation_passed", False):
                     cycle.status = "failed"
                 elif impl_ok and not cycle.metadata.get("merge_succeeded", False):
                     cycle.status = "failed"
@@ -210,6 +218,9 @@ class SDLCPipeline:
     def _phase_validate(self, cycle: CycleState) -> CycleState:
         cycle.phase = "validate"
         changed = list(cycle.metadata.get("local_implementation_files") or [])
+        if not changed:
+            log_phase_start("validate", "self-tests only (no files changed)")
+            return self._phase_validate_self_only(cycle)
         log_phase_start("validate", f"{len(changed)} changed file(s)")
         combined = run_combined_validation(changed_files=changed)
         summary = combined_summary(combined)

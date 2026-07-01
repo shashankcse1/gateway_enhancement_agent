@@ -8,6 +8,7 @@ import time
 from gateway_enhancement_agent.email_notifier import maybe_send_weekly_report
 from gateway_enhancement_agent.git_automation import fully_autonomous
 from gateway_enhancement_agent.progress_log import log
+from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
 from gateway_enhancement_agent.state_store import CycleState
 
 

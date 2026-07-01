@@ -5,10 +5,14 @@
   "refresh_competitor_research_hours": 24,
   "forbidden_overwrite_paths": [
     "backend/app/routers/gateway.py",
-    "frontend/app.js"
+    "frontend/app.js",
+    "frontend/views/routing-gateway.html"
   ],
   "prefer_implement_workers": ["backend_tests", "governance_docs", "backend_service", "frontend_ui"],
   "min_lines_large_files": {
-    "backend/app/routers/gateway.py": 500
+    "backend/app/routers/gateway.py": 500,
+    "frontend/views/routing-gateway.html": 400,
+    "frontend/app.js": 5000,
+    "backend/docs/governance/api-inventory-and-ui-map.md": 400
   }
 }

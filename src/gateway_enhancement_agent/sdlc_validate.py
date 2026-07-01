@@ -25,9 +25,12 @@ class CombinedValidation:
 
 def run_combined_validation(*, changed_files: list[str] | None = None) -> CombinedValidation:
     self_runner = SelfTestRunner()
+    self_results = self_runner.run_all()
+    if changed_files is not None and len(changed_files) == 0:
+        return CombinedValidation(self_results=self_results, target_results=[])
     target_runner = ValidationRunner()
     return CombinedValidation(
-        self_results=self_runner.run_all(),
+        self_results=self_results,
         target_results=target_runner.run_all(changed_files=changed_files),
     )
 
