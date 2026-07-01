@@ -10,6 +10,11 @@ from pathlib import Path
 
 from gateway_enhancement_agent.config import load_json, target_repo
 from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
+from gateway_enhancement_agent.gap_intelligence import (
+    build_tests_first_user_prompt,
+    normalize_test_blocks,
+    pick_test_template,
+)
 from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.file_blocks import extract_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
@@ -165,6 +170,7 @@ class ParallelOrchestrator:
         merged = self._merge_results(gap, cycle_id, design_brief, implement_results, artifact_dir)
         repo = target_repo()
         filtered_blocks, dropped = filter_blocks_for_delivery(merged.merged_blocks, repo)
+        filtered_blocks = normalize_test_blocks(filtered_blocks, gap_id=gap.gap_id, route=gap.route)
         if dropped:
             merged.merged_blocks = filtered_blocks
             merged.merged_response = self._blocks_to_response(filtered_blocks)
@@ -345,7 +351,15 @@ Produce file blocks ONLY for files in your component scope.
         delivery = DeliveryConfig.from_env()
         if delivery.tests_first and worker.worker_id == "backend_tests":
             target_test = suggest_test_path(gap.gap_id, gap.route)
-            user += f"\n## Required output\nCreate ONE new file: `{target_test}` (file must not exist yet).\n"
+            template_rel = pick_test_template(gap.route or gap.title)
+            user = build_tests_first_user_prompt(
+                gap=gap,
+                cycle_id=cycle_id,
+                design_brief=design_brief,
+                context=worker_context,
+                target_test=target_test,
+                template_rel=template_rel,
+            )
         response = self.client.chat(system=system, user=user, label=f"implement:{worker.worker_id}")
         blocks = extract_file_blocks(response)
         return SubagentResult(

@@ -116,6 +116,60 @@ class BacklogStore:
         data["updated_at"] = _utc_now()
         self.save(data)
 
+    def mark_deferred(self, gap_id: str, cycle_id: int, *, reason: str) -> None:
+        data = self.load()
+        item = data.setdefault("items", {}).get(gap_id)
+        if not item:
+            item = {"gap_id": gap_id, "title": gap_id}
+        item["status"] = "deferred"
+        item["deferred_cycle"] = cycle_id
+        item["deferred_at"] = _utc_now()
+        item["deferred_reason"] = reason[:500]
+        data.setdefault("items", {})[gap_id] = item
+        data["updated_at"] = _utc_now()
+        self.save(data)
+
+    def mark_covered(self, gap_id: str, cycle_id: int, *, covering_files: list[str]) -> None:
+        data = self.load()
+        item = data.setdefault("items", {}).get(gap_id)
+        if not item:
+            return
+        item["status"] = "closed"
+        item["closed_cycle"] = cycle_id
+        item["closed_at"] = _utc_now()
+        item["closed_reason"] = "route_already_covered_in_tests"
+        item["covering_test_files"] = covering_files
+        data["updated_at"] = _utc_now()
+        self.save(data)
+
+    def record_validation_failure(self, gap_id: str, cycle_id: int, *, reason: str) -> int:
+        data = self.load()
+        item = data.setdefault("items", {}).get(gap_id)
+        if not item:
+            item = {"gap_id": gap_id, "title": gap_id}
+        count = int(item.get("validation_failures", 0)) + 1
+        item["validation_failures"] = count
+        item["last_validation_failure_cycle"] = cycle_id
+        item["last_validation_failure_reason"] = reason[:500]
+        data.setdefault("items", {})[gap_id] = item
+        data["updated_at"] = _utc_now()
+        self.save(data)
+        return count
+
+    def validation_failure_count(self, gap_id: str) -> int:
+        data = self.load()
+        item = data.get("items", {}).get(gap_id, {})
+        return int(item.get("validation_failures", 0))
+
+    def should_auto_defer(self, gap_id: str) -> bool:
+        from gateway_enhancement_agent.gap_intelligence import load_gap_intelligence_config
+
+        cfg = load_gap_intelligence_config()
+        if not cfg.get("auto_defer_on_max_failures", True):
+            return False
+        limit = int(cfg.get("max_validation_failures", 2))
+        return self.validation_failure_count(gap_id) >= limit
+
     def report_markdown(self) -> str:
         data = self.load()
         items = list(data.get("items", {}).values())

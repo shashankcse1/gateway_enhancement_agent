@@ -10,6 +10,12 @@ from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.file_blocks import apply_file_blocks, extract_file_blocks
 from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
 from gateway_enhancement_agent.gap_analyzer import GapItem
+from gateway_enhancement_agent.gap_intelligence import (
+    build_tests_first_user_prompt,
+    normalize_test_blocks,
+    pick_test_template,
+    scaffold_auth_test,
+)
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
 from gateway_enhancement_agent.repo_access import read_repo_file
@@ -141,6 +147,7 @@ class CodeImplementer:
                 )
             llm_path = artifact_dir / "local_llm_response.md"
             blocks, dropped = filter_blocks_for_delivery(parallel.merged_blocks, repo)
+            blocks = normalize_test_blocks(blocks, gap_id=gap.gap_id, route=gap.route)
             parallel.merged_blocks = blocks
             if dropped:
                 log(f"filtered forbidden paths: {', '.join(dropped)}", phase="implement")
@@ -209,36 +216,20 @@ class CodeImplementer:
         delivery = DeliveryConfig.from_env()
         if delivery.tests_first:
             target_test = suggest_test_path(gap.gap_id, gap.route)
+            template_rel = pick_test_template(gap.route or gap.title)
             system = (
                 "You write focused pytest files for the AgentHub gateway. "
-                "Use TestClient(app) from app.main only. No backend.* imports. "
+                "Use TestClient(app) from app.main only. No backend.* imports. No helper functions unless copied from template. "
                 + self.FILE_BLOCK_INSTRUCTION
             )
-            user = f"""# Test task — cycle {cycle_id:04d}
-
-## Gap
-- ID: {gap.gap_id}
-- Title: {gap.title}
-- Route: {gap.route or 'N/A'}
-
-## Design brief
-{design_brief}
-
-## Required output
-Create ONE new file: `{target_test}`
-
-## Example pattern
-```file:backend/tests/test_gateway_routes.py
-from fastapi.testclient import TestClient
-from app.main import app
-client = TestClient(app)
-```
-
-## Context
-{context}
-
-Write tests for allow/deny paths for the gap route. Keep under 60 lines.
-"""
+            user = build_tests_first_user_prompt(
+                gap=gap,
+                cycle_id=cycle_id,
+                design_brief=design_brief,
+                context=context,
+                target_test=target_test,
+                template_rel=template_rel,
+            )
         else:
             system = (
                 "You are a senior gateway platform engineer. "
@@ -270,7 +261,11 @@ Implement the smallest correct slice for this gap. Output complete files to crea
             llm_path = artifact_dir / "local_llm_response.md"
             llm_path.write_text(response, encoding="utf-8")
             blocks = extract_file_blocks(response)
+            blocks = normalize_test_blocks(blocks, gap_id=gap.gap_id, route=gap.route)
             blocks, _dropped = filter_blocks_for_delivery(blocks, repo)
+            if not blocks and delivery.tests_first:
+                target_test = suggest_test_path(gap.gap_id, gap.route)
+                blocks = {target_test: scaffold_auth_test(gap, target_test)}
             if not blocks:
                 return ImplementResult(
                     attempted=True,
@@ -328,9 +323,10 @@ Implement the smallest correct slice for this gap. Output complete files to crea
     def _context_paths(self, repo: Path, gap: GapItem) -> list[str]:
         delivery = DeliveryConfig.from_env()
         if delivery.tests_first:
+            template_rel = pick_test_template(gap.route or gap.title)
             candidates = [
                 "backend/AGENTS.md",
-                "backend/tests/test_gateway_routes.py",
+                template_rel,
                 "backend/tests/test_gateway_inference.py",
             ]
         else:

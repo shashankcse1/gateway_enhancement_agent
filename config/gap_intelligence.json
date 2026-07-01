@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "max_validation_failures": 2,
+  "max_pytest_repair_attempts": 1,
+  "auto_close_covered_routes": true,
+  "auto_defer_on_max_failures": true,
+  "prefer_auth_only_gaps": true,
+  "easy_route_bonus": 12,
+  "covered_route_penalty": 50,
+  "complex_route_penalty": 15,
+  "repeated_failure_penalty": 8
+}

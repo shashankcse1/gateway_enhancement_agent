@@ -6,7 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from gateway_enhancement_agent.code_implementer import CodeImplementer
-from gateway_enhancement_agent.gap_analyzer import GapItem
+from gateway_enhancement_agent.delivery_config import suggest_test_path
+from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 
 
@@ -98,9 +99,10 @@ def test_code_implementer_applies_file_blocks(mock_target_repo, monkeypatch) -> 
         artifact_dir=artifact_dir,
     )
     assert result.succeeded is True
-    assert "backend/tests/test_delete_response.py" in result.files_written
-    written = (mock_target_repo / "backend/tests/test_delete_response.py").read_text(encoding="utf-8")
-    assert "delete_response" in written
+    expected = suggest_test_path(gap.gap_id, gap.route)
+    assert expected in result.files_written
+    written = (mock_target_repo / expected).read_text(encoding="utf-8")
+    assert "TestClient" in written
 
 
 def test_code_implementer_skips_when_auto_disabled(mock_target_repo) -> None:

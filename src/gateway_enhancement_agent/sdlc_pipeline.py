@@ -33,6 +33,7 @@ from gateway_enhancement_agent.sdlc_validate import (
 from gateway_enhancement_agent.progress_log import log, log_cycle_banner, log_hint, log_phase_done, log_phase_start
 from gateway_enhancement_agent.state_store import CycleState, StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
+from gateway_enhancement_agent.test_repair import repair_test_file, structured_pytest_failure
 
 
 class SDLCPipeline:
@@ -123,6 +124,9 @@ class SDLCPipeline:
         cycle.phase = "analyze"
         log_phase_start("analyze", "gap matrix + backlog")
         analyzer = GapAnalyzer()
+        covered = analyzer.close_covered_gaps_in_backlog(cycle.cycle_id)
+        if covered:
+            log(f"auto-closed {len(covered)} gap(s) already covered by tests: {', '.join(covered)}", phase="analyze")
         matrix = analyzer.build_matrix()
         self.backlog.sync_from_matrix(matrix, cycle.cycle_id)
         self.store.write_json(cycle.cycle_id, "gap_matrix.json", analyzer.to_json())
@@ -233,11 +237,43 @@ class SDLCPipeline:
         cycle.metadata["validation_passed"] = summary["passed"]
         cycle.metadata["self_test_passed"] = summary["self_test_passed"]
         cycle.metadata["target_validation_passed"] = summary["target_validation_passed"]
+        gap = self._active_gap(cycle)
+        if not summary["passed"] and changed and gap and not summary["target_validation_passed"]:
+            failure_text = self._collect_target_failure_text(combined)
+            log_phase_start("validate", "pytest repair loop")
+            repaired, repair_err = repair_test_file(gap, changed[0], failure_text)
+            cycle.metadata["pytest_repair_attempted"] = True
+            cycle.metadata["pytest_repair_succeeded"] = repaired
+            if repaired:
+                combined = run_combined_validation(changed_files=changed)
+                summary = combined_summary(combined)
+                self.store.write_json(cycle.cycle_id, "validation_report.json", summary)
+                self.store.write_text(
+                    cycle.cycle_id,
+                    "validation_report.md",
+                    combined_report_markdown(combined),
+                )
+                cycle.metadata["validation_passed"] = summary["passed"]
+                cycle.metadata["self_test_passed"] = summary["self_test_passed"]
+                cycle.metadata["target_validation_passed"] = summary["target_validation_passed"]
+            else:
+                cycle.metadata["pytest_repair_error"] = repair_err[:500]
         if not summary["passed"]:
             if not summary["self_test_passed"]:
                 cycle.errors.append("Agent self-tests failed")
             if not summary["target_validation_passed"]:
                 cycle.errors.append("Target repo validation gates failed")
+            if gap:
+                fail_reason = "; ".join(cycle.errors[-2:]) if cycle.errors else "validation failed"
+                failures = self.backlog.record_validation_failure(gap.gap_id, cycle.cycle_id, reason=fail_reason)
+                cycle.metadata["validation_failure_count"] = failures
+                if self.backlog.should_auto_defer(gap.gap_id):
+                    self.backlog.mark_deferred(
+                        gap.gap_id,
+                        cycle.cycle_id,
+                        reason=f"pytest failed {failures}x — auto-deferred",
+                    )
+                    log(f"gap {gap.gap_id} deferred after {failures} validation failure(s)", phase="analyze")
         cycle.completed_phases.append("validate")
         self.store.update_cycle(cycle)
         log_phase_done("validate", "PASS" if summary["passed"] else "FAIL")
@@ -383,3 +419,15 @@ class SDLCPipeline:
                 if gap.gap_id == cycle.active_gap_id:
                     return gap
         return analyzer.top_gap()
+
+    @staticmethod
+    def _collect_target_failure_text(combined) -> str:
+        parts: list[str] = []
+        for result in combined.target_results:
+            if result.passed:
+                continue
+            if result.gate_id == "gateway_pytest":
+                parts.append(structured_pytest_failure(result.stdout_tail, result.stderr_tail))
+            elif result.stderr_tail or result.stdout_tail:
+                parts.append((result.stderr_tail or result.stdout_tail).strip())
+        return "\n".join(parts)[:3000]

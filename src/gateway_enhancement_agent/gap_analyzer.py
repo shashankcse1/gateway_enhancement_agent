@@ -6,6 +6,16 @@ from typing import Any
 
 from gateway_enhancement_agent.backlog import BacklogStore
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
+from gateway_enhancement_agent.gap_intelligence import (
+    adjust_gap_score,
+    find_covering_test_files,
+    is_route_covered_in_tests,
+    load_gap_intelligence_config,
+    normalize_test_blocks,
+    parse_route,
+    route_mentioned_in_content,
+    scaffold_auth_test,
+)
 from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.target_inventory import TargetInventory
 
@@ -15,6 +25,45 @@ class GapAnalyzer:
         self.inventory = TargetInventory()
         self.competitors = CompetitorRegistry()
         self.backlog = BacklogStore()
+        self.repo = self.inventory.repo
+
+    def _close_covered_gaps(self, matrix: list[GapItem]) -> list[GapItem]:
+        cfg = load_gap_intelligence_config()
+        if not cfg.get("auto_close_covered_routes", True):
+            return matrix
+        kept: list[GapItem] = []
+        for gap in matrix:
+            route = gap.route or gap.title
+            if is_route_covered_in_tests(route, self.repo):
+                continue
+            kept.append(gap)
+        return kept
+
+    def close_covered_gaps_in_backlog(self, cycle_id: int) -> list[str]:
+        """Mark inventory gaps as closed when tests already cover the route."""
+        closed: list[str] = []
+        cfg = load_gap_intelligence_config()
+        if not cfg.get("auto_close_covered_routes", True):
+            return closed
+        inv = self.inventory.parse_inventory_gaps()
+        deferred = self.backlog.deferred_ids()
+        already_closed = self.backlog.closed_ids()
+        for idx, gap in enumerate(inv):
+            gap_id = f"inv-{idx:03d}"
+            if gap_id in deferred or gap_id in already_closed:
+                continue
+            route = f"{gap.method} {gap.route}"
+            if not is_route_covered_in_tests(route, self.repo):
+                continue
+            files = find_covering_test_files(self.repo, gap.method, gap.route)
+            self.backlog.mark_covered(gap_id, cycle_id, covering_files=files)
+            closed.append(gap_id)
+        return closed
+
+    def _apply_intelligence_scoring(self, matrix: list[GapItem]) -> None:
+        for gap in matrix:
+            failures = self.backlog.validation_failure_count(gap.gap_id)
+            gap.score = adjust_gap_score(gap, self.repo, validation_failures=failures)
 
     def _match_capabilities(self, route: str | None) -> tuple[list[str], list[str]]:
         if not route:
@@ -101,7 +150,9 @@ class GapAnalyzer:
 
         ranked = sorted(by_title.values(), key=lambda g: (g.score, g.gap_id))
         self._apply_staleness_boost(ranked)
-        return sorted(ranked, key=lambda g: (g.score, g.gap_id))
+        self._apply_intelligence_scoring(ranked)
+        ranked = sorted(ranked, key=lambda g: (g.score, g.gap_id))
+        return self._close_covered_gaps(ranked)
 
     def _apply_staleness_boost(self, matrix: list[GapItem]) -> None:
         data = self.backlog.load()
