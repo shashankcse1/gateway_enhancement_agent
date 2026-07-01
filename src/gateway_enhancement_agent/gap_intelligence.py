@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from gateway_enhancement_agent.config import load_json, target_repo
-from gateway_enhancement_agent.delivery_config import suggest_test_path
+from gateway_enhancement_agent.delivery_config import DeliveryConfig, suggest_test_path
 from gateway_enhancement_agent.gap_models import GapItem
+from gateway_enhancement_agent.prompt_budget import trim_to_token_budget
 
 _ROUTE_CALL = re.compile(
     r'client\.(get|post|put|patch|delete)\s*\(\s*["\']([^"\']+)["\']',
@@ -108,6 +109,15 @@ def is_route_covered_in_tests(route: str | None, repo: Path | None = None) -> bo
     return bool(find_covering_test_files(repo, method, path))
 
 
+def is_gap_covered_for_delivery(gap_id: str, route: str | None, repo: Path | None = None) -> bool:
+    """In tests_first mode, a gap is covered only when its canonical dedicated test file exists."""
+    root = repo or target_repo()
+    if DeliveryConfig.from_env().tests_first:
+        target = suggest_test_path(gap_id, route)
+        return (root / target).is_file()
+    return is_route_covered_in_tests(route, root)
+
+
 def pick_test_template(route: str | None) -> str:
     _, path = parse_route(route)
     path_l = path.lower()
@@ -144,7 +154,9 @@ def adjust_gap_score(gap: GapItem, repo: Path | None = None, *, validation_failu
     cfg = load_gap_intelligence_config()
     score = gap.score
     method, path = parse_route(gap.route or gap.title)
-    if cfg.get("auto_close_covered_routes", True) and is_route_covered_in_tests(gap.route or gap.title, repo):
+    if cfg.get("auto_close_covered_routes", True) and is_gap_covered_for_delivery(
+        gap.gap_id, gap.route or gap.title, repo
+    ):
         score += int(cfg.get("covered_route_penalty", 50))
     score += difficulty_penalty(gap)
     if validation_failures > 0:
@@ -179,10 +191,7 @@ def normalize_test_blocks(
 
 def is_auth_only_gap(gap: GapItem) -> bool:
     """Gaps testable with auth/deny assertions only (no seeding)."""
-    method, path = parse_route(gap.route or gap.title)
-    path_l = (path or "").lower()
-    if "vector_store" in path_l or "mcp" in path_l or "assistant" in path_l:
-        return False
+    method, _path = parse_route(gap.route or gap.title)
     return method in {"DELETE", "GET", "POST", "PUT", "PATCH"}
 
 
@@ -214,7 +223,7 @@ def scaffold_auth_test(gap: GapItem, target_path: str) -> str:
         f"def test_{func}_deny_role():",
         f'    response = client.{client_method}(',
         f'        "{path}",',
-        '        headers={"X-Actor-Role": "Auditor", "X-Actor-Id": "aud-test"},',
+        '        headers={"X-Actor-Role": "Guest", "X-Actor-Id": "guest-test"},',
         "    )",
         "    assert response.status_code in (403, 404)",
         "",
@@ -236,6 +245,11 @@ def build_tests_first_user_prompt(
     template_rel: str,
 ) -> str:
     method, path = parse_route(gap.route or gap.title)
+    brief = trim_to_token_budget(
+        design_brief,
+        max(64, 800 // 4),
+        marker="... [design brief truncated]",
+    )
     return f"""# Test task — cycle {cycle_id:04d}
 
 ## Gap
@@ -245,7 +259,7 @@ def build_tests_first_user_prompt(
 - Path: {path or 'N/A'}
 
 ## Design brief
-{design_brief}
+{brief}
 
 ## Required output
 Create ONE new file at exactly: `{target_test}`
@@ -256,7 +270,7 @@ Create ONE new file at exactly: `{target_test}`
 - Do NOT invent imports (`backend.*`, `_ensure_tenant`, etc.).
 - Max 45 lines. Three tests maximum.
 - Missing auth: assert status in (401, 403).
-- Wrong role: assert status in (403, 404).
+- Wrong role (use Guest): assert status in (403, 404).
 - Admin call: assert status in (200, 404, 422, 501) — use `in`, never exact 200 unless template shows seeding.
 
 ## Template to mirror

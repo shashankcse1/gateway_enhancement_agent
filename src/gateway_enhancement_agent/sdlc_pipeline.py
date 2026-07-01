@@ -9,6 +9,7 @@ from gateway_enhancement_agent.capability_coverage import CapabilityCoverage
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.competitor_web_research import maybe_refresh_competitor_research
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
+from gateway_enhancement_agent.gap_models import GapItem, gap_from_dict, gap_to_dict
 from gateway_enhancement_agent.code_implementer import CodeImplementer
 from gateway_enhancement_agent.git_automation import (
     GitAutomator,
@@ -80,9 +81,13 @@ class SDLCPipeline:
                 files = list(cycle.metadata.get("local_implementation_files") or [])
                 merge_ok = cycle.metadata.get("merge_succeeded")
                 if not files and not impl_ok:
-                    cycle.status = "failed"
-                    if cycle.active_gap_id and not cycle.errors:
-                        cycle.errors.append("Autonomous cycle produced no implementation for active gap")
+                    if cycle.metadata.get("no_open_gaps"):
+                        cycle.status = "completed"
+                        cycle.metadata["validation_passed"] = True
+                    else:
+                        cycle.status = "failed"
+                        if cycle.active_gap_id and not cycle.errors:
+                            cycle.errors.append("Autonomous cycle produced no implementation for active gap")
                 elif not cycle.metadata.get("validation_passed", False):
                     cycle.status = "failed"
                 elif impl_ok and not merge_ok:
@@ -131,6 +136,10 @@ class SDLCPipeline:
         cycle.phase = "analyze"
         log_phase_start("analyze", "gap matrix + backlog")
         analyzer = GapAnalyzer()
+        inv = analyzer.inventory.parse_inventory_gaps()
+        reconciled = analyzer.backlog.reconcile_with_inventory(inv, analyzer.repo, cycle_id=cycle.cycle_id)
+        if reconciled:
+            log(f"backlog reconciled: {', '.join(reconciled[:5])}", phase="analyze")
         covered = analyzer.close_covered_gaps_in_backlog(cycle.cycle_id)
         if covered:
             log(f"auto-closed {len(covered)} gap(s) already covered by tests: {', '.join(covered)}", phase="analyze")
@@ -147,8 +156,11 @@ class SDLCPipeline:
             cycle.active_gap_id = top.gap_id
             cycle.metadata["active_gap_title"] = top.title
             cycle.metadata["active_gap_score"] = top.score
+            cycle.metadata["active_gap_snapshot"] = gap_to_dict(top)
             cycle.metadata["competitor_ids"] = top.competitor_ids
             self.backlog.mark_scheduled(top.gap_id, cycle.cycle_id)
+        else:
+            cycle.metadata["no_open_gaps"] = True
         cycle.completed_phases.append("analyze")
         self.store.update_cycle(cycle)
         if top:
@@ -289,6 +301,15 @@ class SDLCPipeline:
 
     def _phase_validate_self_only(self, cycle: CycleState) -> CycleState:
         cycle.phase = "validate"
+        if cycle.metadata.get("no_open_gaps"):
+            log_phase_start("validate", "skipped — no open gaps")
+            cycle.metadata["validation_passed"] = True
+            cycle.metadata["self_test_passed"] = True
+            cycle.metadata["target_validation_skipped"] = True
+            cycle.completed_phases.append("validate")
+            self.store.update_cycle(cycle)
+            log_phase_done("validate", "SKIP")
+            return cycle
         log_phase_start("validate", "agent self-tests only")
         runner = SelfTestRunner()
         results = runner.run_all()
@@ -420,13 +441,41 @@ class SDLCPipeline:
             },
         )
 
-    def _active_gap(self, cycle: CycleState):
+    def _active_gap(self, cycle: CycleState) -> GapItem | None:
+        snapshot = cycle.metadata.get("active_gap_snapshot")
+        if snapshot:
+            return gap_from_dict(snapshot)
         analyzer = GapAnalyzer()
         if cycle.active_gap_id:
             for gap in analyzer.build_matrix():
                 if gap.gap_id == cycle.active_gap_id:
                     return gap
+            return self._gap_from_inventory(cycle.active_gap_id)
         return analyzer.top_gap()
+
+    def _gap_from_inventory(self, gap_id: str) -> GapItem | None:
+        """Resolve a gap by id even when it left the live matrix (e.g. after tests were written)."""
+        if not gap_id.startswith("inv-"):
+            return None
+        try:
+            idx = int(gap_id.split("-", 1)[1])
+        except ValueError:
+            return None
+        inv = GapAnalyzer().inventory.parse_inventory_gaps()
+        if idx < 0 or idx >= len(inv):
+            return None
+        gap = inv[idx]
+        route = f"{gap.method} {gap.route}".strip()
+        return GapItem(
+            gap_id=gap_id,
+            title=route,
+            source="api_inventory",
+            priority=2,
+            score=10,
+            route=route,
+            coverage=gap.coverage,
+            rationale=gap.notes or "",
+        )
 
     @staticmethod
     def _collect_target_failure_text(combined) -> str:

@@ -10,10 +10,12 @@ from gateway_enhancement_agent.gap_intelligence import (
     adjust_gap_score,
     find_covering_test_files,
     is_auth_only_gap,
+    is_gap_covered_for_delivery,
     is_route_covered_in_tests,
     load_gap_intelligence_config,
     parse_route,
 )
+from gateway_enhancement_agent.delivery_config import suggest_test_path
 from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.target_inventory import TargetInventory
 
@@ -32,7 +34,7 @@ class GapAnalyzer:
         kept: list[GapItem] = []
         for gap in matrix:
             route = gap.route or gap.title
-            if is_route_covered_in_tests(route, self.repo):
+            if is_gap_covered_for_delivery(gap.gap_id, route, self.repo):
                 continue
             kept.append(gap)
         return kept
@@ -51,9 +53,12 @@ class GapAnalyzer:
             if gap_id in deferred or gap_id in already_closed:
                 continue
             route = f"{gap.method} {gap.route}"
-            if not is_route_covered_in_tests(route, self.repo):
+            if not is_gap_covered_for_delivery(gap_id, route, self.repo):
                 continue
-            files = find_covering_test_files(self.repo, gap.method, gap.route)
+            target = suggest_test_path(gap_id, route)
+            files = [target] if (self.repo / target).is_file() else find_covering_test_files(
+                self.repo, gap.method, gap.route
+            )
             self.backlog.mark_covered(gap_id, cycle_id, covering_files=files)
             closed.append(gap_id)
         return closed
@@ -83,10 +88,11 @@ class GapAnalyzer:
         return 10 + priority * 10
 
     def build_matrix(self) -> list[GapItem]:
+        inv = self.inventory.parse_inventory_gaps()
+        self.backlog.reconcile_with_inventory(inv, self.repo)
         items: list[GapItem] = []
         deferred = self.backlog.deferred_ids()
         closed = self.backlog.closed_ids()
-        inv = self.inventory.parse_inventory_gaps()
         for idx, gap in enumerate(inv):
             gap_id = f"inv-{idx:03d}"
             if gap_id in deferred or gap_id in closed:
@@ -115,7 +121,7 @@ class GapAnalyzer:
                     source="api_inventory",
                     priority=priority,
                     score=score,
-                    route=gap.route,
+                    route=f"{gap.method} {gap.route}".strip(),
                     coverage=gap.coverage,
                     competitor_ids=comp_ids,
                     related_capabilities=cap_ids,
@@ -154,7 +160,39 @@ class GapAnalyzer:
         self._apply_staleness_boost(ranked)
         self._apply_intelligence_scoring(ranked)
         ranked = sorted(ranked, key=lambda g: (g.score, g.gap_id))
-        return self._close_covered_gaps(ranked)
+        ranked = self._close_covered_gaps(ranked)
+        if not ranked:
+            ranked = self._synthesize_missing_test_gaps()
+        return ranked
+
+    def _synthesize_missing_test_gaps(self) -> list[GapItem]:
+        """When inventory gaps are covered in existing tests, target net-new dedicated test files."""
+        items: list[GapItem] = []
+        deferred = self.backlog.deferred_ids()
+        for idx, gap in enumerate(self.inventory.parse_inventory_gaps()):
+            gap_id = f"inv-{idx:03d}"
+            if gap_id in deferred:
+                continue
+            if "deprecated" in (gap.notes or "").lower():
+                continue
+            route = f"{gap.method} {gap.route}"
+            if is_gap_covered_for_delivery(gap_id, route, self.repo):
+                continue
+            target = suggest_test_path(gap_id, route)
+            score = 15 if gap.coverage.lower() == "partial" else 10
+            items.append(
+                GapItem(
+                    gap_id=gap_id,
+                    title=route,
+                    source="api_inventory",
+                    priority=2,
+                    score=score,
+                    route=route,
+                    coverage=gap.coverage,
+                    rationale=f"Dedicated test file missing: {target}",
+                )
+            )
+        return sorted(items, key=lambda g: (g.score, g.gap_id))
 
     def _apply_staleness_boost(self, matrix: list[GapItem]) -> None:
         data = self.backlog.load()

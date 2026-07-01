@@ -14,6 +14,12 @@ from typing import Any
 from gateway_enhancement_agent.config import load_json
 from gateway_enhancement_agent.delivery_config import DeliveryConfig
 from gateway_enhancement_agent.progress_log import log
+from gateway_enhancement_agent.prompt_budget import (
+    estimate_tokens,
+    fit_messages_to_budget,
+    prompt_token_budget,
+    shrink_user_prompt,
+)
 
 _CHAT_LOCK = threading.Lock()
 
@@ -32,6 +38,12 @@ class LLMConfig:
     auto_implement: bool
     max_context_files: int
     max_file_chars: int
+    num_predict: int
+    reserve_output_tokens: int
+    max_prompt_tokens: int
+    tests_first_max_context_files: int
+    tests_first_max_file_chars: int
+    max_design_brief_chars: int
     allowed_path_prefixes: list[str]
 
     @classmethod
@@ -59,7 +71,23 @@ class LLMConfig:
             auto_implement=auto_implement,
             max_context_files=int(raw.get("max_context_files", 6)),
             max_file_chars=int(raw.get("max_file_chars", 12000)),
+            num_predict=int(os.environ.get("LOCAL_LLM_NUM_PREDICT", raw.get("num_predict", 1536))),
+            reserve_output_tokens=int(
+                os.environ.get("LOCAL_LLM_RESERVE_OUTPUT", raw.get("reserve_output_tokens", 2048))
+            ),
+            max_prompt_tokens=int(os.environ.get("LOCAL_LLM_MAX_PROMPT_TOKENS", raw.get("max_prompt_tokens", 0))),
+            tests_first_max_context_files=int(raw.get("tests_first_max_context_files", 2)),
+            tests_first_max_file_chars=int(raw.get("tests_first_max_file_chars", 3500)),
+            max_design_brief_chars=int(raw.get("max_design_brief_chars", 800)),
             allowed_path_prefixes=list(raw.get("allowed_path_prefixes", ["backend/", "frontend/"])),
+        )
+
+    def effective_max_prompt_tokens(self) -> int:
+        if self.max_prompt_tokens > 0:
+            return self.max_prompt_tokens
+        return prompt_token_budget(
+            num_ctx=self.num_ctx,
+            reserve_output_tokens=self.reserve_output_tokens,
         )
 
 
@@ -118,11 +146,62 @@ class LocalLLMClient:
                 f"No local model available. Install one with: ollama pull {self.config.model}"
             )
         tag = label or "llm"
-        log(f"Ollama → {tag} (model={model}, timeout={self.config.timeout_seconds}s)", phase="implement")
+        budget = self.config.effective_max_prompt_tokens()
+        system_fit, user_fit, trimmed = fit_messages_to_budget(
+            system=system,
+            user=user,
+            max_prompt_tokens=budget,
+        )
+        if trimmed:
+            est = estimate_tokens(system_fit) + estimate_tokens(user_fit)
+            log(
+                f"prompt trimmed to ~{est} tokens (budget={budget}, ctx={self.config.num_ctx})",
+                phase="implement",
+            )
         started = time.monotonic()
+        last_error: str | None = None
+        for attempt, shrink_level in enumerate((0, 1, 2)):
+            attempt_user = user_fit if shrink_level == 0 else shrink_user_prompt(user_fit, level=shrink_level)
+            attempt_system = system_fit
+            if shrink_level > 0:
+                attempt_system, attempt_user, _ = fit_messages_to_budget(
+                    system=system_fit,
+                    user=attempt_user,
+                    max_prompt_tokens=budget,
+                )
+            content, done_reason = self._ollama_chat(
+                model=model,
+                system=attempt_system,
+                user=attempt_user,
+                label=tag,
+                attempt=attempt,
+            )
+            if content.strip() and done_reason != "length":
+                elapsed = time.monotonic() - started
+                log(f"Ollama ✓ {tag} ({elapsed:.0f}s, {len(content)} chars)", phase="implement")
+                return content
+            last_error = "output truncated (token limit)" if done_reason == "length" else "empty response"
+            log(f"Ollama retry {attempt + 1}/3 — {last_error}", phase="implement")
+        raise RuntimeError(f"Local LLM failed after token-limit retries: {last_error}")
+
+    def _ollama_chat(
+        self,
+        *,
+        model: str,
+        system: str,
+        user: str,
+        label: str,
+        attempt: int,
+    ) -> tuple[str, str | None]:
+        log(
+            f"Ollama → {label} (model={model}, attempt={attempt + 1}, "
+            f"~{estimate_tokens(system) + estimate_tokens(user)} prompt tokens)",
+            phase="implement",
+        )
         options: dict[str, Any] = {
             "temperature": self.config.temperature,
             "num_ctx": self.config.num_ctx,
+            "num_predict": self.config.num_predict,
         }
         if self.config.num_gpu != 0:
             options["num_gpu"] = self.config.num_gpu
@@ -140,11 +219,8 @@ class LocalLLMClient:
         result = self._request("POST", "/api/chat", payload)
         message = result.get("message") or {}
         content = message.get("content", "")
-        if not content.strip():
-            raise RuntimeError("Local LLM returned empty response")
-        elapsed = time.monotonic() - started
-        log(f"Ollama ✓ {tag} ({elapsed:.0f}s, {len(content)} chars)", phase="implement")
-        return content
+        done_reason = result.get("done_reason")
+        return content, done_reason
 
     def _list_models(self) -> list[str]:
         payload = self._request("GET", "/api/tags", None)

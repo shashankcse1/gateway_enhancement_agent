@@ -75,7 +75,7 @@ def test_backlog_auto_defer_after_failures(tmp_path, monkeypatch) -> None:
     assert "inv-001" in store.deferred_ids()
 
 
-def test_analyzer_skips_covered_vector_store_route(mock_target_repo, tmp_path, monkeypatch) -> None:
+def test_analyzer_keeps_vector_store_gap_without_dedicated_test(mock_target_repo, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
     rag = mock_target_repo / "backend/tests/test_gateway_rag.py"
     rag.parent.mkdir(parents=True, exist_ok=True)
@@ -94,9 +94,25 @@ def test_analyzer_skips_covered_vector_store_route(mock_target_repo, tmp_path, m
 """,
         encoding="utf-8",
     )
+    store = BacklogStore()
+    store.save(
+        {
+            "version": 1,
+            "items": {
+                "inv-000": {
+                    "gap_id": "inv-000",
+                    "title": "GET /v1/vector_stores/{store_id}",
+                    "status": "closed",
+                    "closed_reason": "route_already_covered_in_tests",
+                }
+            },
+        }
+    )
     analyzer = GapAnalyzer()
     closed = analyzer.close_covered_gaps_in_backlog(cycle_id=9)
-    assert any("inv-" in gid for gid in closed)
+    assert "inv-000" not in closed
+    matrix = analyzer.build_matrix()
+    assert any(g.gap_id == "inv-000" for g in matrix)
     top = analyzer.top_gap()
     assert top is not None
-    assert "vector_stores" not in top.title.lower() or top.coverage == "Gap"
+    assert "vector_stores" in top.title.lower() or top.coverage == "Gap"

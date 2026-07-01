@@ -9,6 +9,20 @@ from gateway_enhancement_agent.sdlc_validate import (
 from gateway_enhancement_agent.validation_runner import GateResult
 
 
+def test_combined_validation_skips_agent_self_tests_for_test_only_changes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "gateway_enhancement_agent.sdlc_validate.SelfTestRunner.run_all",
+        lambda self: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
+    monkeypatch.setattr(
+        "gateway_enhancement_agent.sdlc_validate.ValidationRunner.run_all",
+        lambda self, changed_files=None: [GateResult("gateway_pytest", "Gateway pytest", True, True, 0, "", "")],
+    )
+    combined = run_combined_validation(changed_files=["backend/tests/test_gateway_get_v1_vector_stores.py"])
+    assert combined.self_results == []
+    assert combined_summary(combined)["passed"] is True
+
+
 def test_combined_validation_skips_target_when_no_changes(monkeypatch) -> None:
     monkeypatch.setattr(
         "gateway_enhancement_agent.sdlc_validate.SelfTestRunner.run_all",

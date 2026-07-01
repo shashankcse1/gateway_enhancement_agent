@@ -9,10 +9,16 @@
   "timeout_seconds": 600,
   "temperature": 0.2,
   "num_ctx": 8192,
+  "num_predict": 1536,
+  "reserve_output_tokens": 2048,
+  "max_prompt_tokens": 0,
   "num_gpu": -1,
   "num_thread": 0,
   "auto_implement": true,
-  "max_context_files": 6,
-  "max_file_chars": 12000,
+  "max_context_files": 4,
+  "max_file_chars": 6000,
+  "tests_first_max_context_files": 2,
+  "tests_first_max_file_chars": 3500,
+  "max_design_brief_chars": 800,
   "allowed_path_prefixes": ["backend/", "frontend/"]
 }

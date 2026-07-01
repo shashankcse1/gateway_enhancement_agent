@@ -10,6 +10,7 @@ from typing import Any
 
 from gateway_enhancement_agent.config import runtime_dir
 from gateway_enhancement_agent.gap_models import GapItem
+from gateway_enhancement_agent.target_inventory import InventoryGap
 
 
 def _utc_now() -> str:
@@ -160,6 +161,70 @@ class BacklogStore:
         data = self.load()
         item = data.get("items", {}).get(gap_id, {})
         return int(item.get("validation_failures", 0))
+
+    def reconcile_with_inventory(
+        self,
+        inventory_gaps: list[InventoryGap],
+        repo,
+        *,
+        cycle_id: int = 0,
+    ) -> list[str]:
+        """Align inv-* backlog rows with current inventory; reopen falsely closed gaps."""
+        from pathlib import Path
+
+        from gateway_enhancement_agent.delivery_config import DeliveryConfig
+        from gateway_enhancement_agent.gap_intelligence import (
+            is_gap_covered_for_delivery,
+            load_gap_intelligence_config,
+        )
+
+        root = Path(repo)
+        data = self.load()
+        items: dict[str, Any] = data.setdefault("items", {})
+        changes: list[str] = []
+        cfg = load_gap_intelligence_config()
+        max_failures = int(cfg.get("max_validation_failures", 2))
+        tests_first = DeliveryConfig.from_env().tests_first
+
+        for idx, gap in enumerate(inventory_gaps):
+            gap_id = f"inv-{idx:03d}"
+            route = f"{gap.method} {gap.route}"
+            item = items.get(gap_id)
+            if item is None:
+                continue
+            if item.get("title") != route or item.get("route") != gap.route:
+                item["title"] = route
+                item["route"] = gap.route
+                item["coverage"] = gap.coverage
+                changes.append(f"{gap_id}: synced title/route")
+            if tests_first and item.get("status") == "closed":
+                if not is_gap_covered_for_delivery(gap_id, route, root):
+                    item["status"] = "open"
+                    for key in (
+                        "closed_reason",
+                        "closed_cycle",
+                        "closed_at",
+                        "covering_test_files",
+                        "commit_sha",
+                    ):
+                        item.pop(key, None)
+                    changes.append(f"{gap_id}: reopened (dedicated test missing)")
+            if (
+                cfg.get("auto_defer_on_max_failures", True)
+                and item.get("status") not in ("deferred", "closed")
+                and int(item.get("validation_failures", 0)) >= max_failures
+            ):
+                item["status"] = "deferred"
+                item.setdefault(
+                    "deferred_reason",
+                    f"auto-deferred after {item['validation_failures']} validation failure(s)",
+                )
+                item["deferred_cycle"] = item.get("deferred_cycle", cycle_id)
+                changes.append(f"{gap_id}: auto-deferred")
+        if changes:
+            data["updated_at"] = _utc_now()
+            self.save(data)
+        return changes
 
     def should_auto_defer(self, gap_id: str) -> bool:
         from gateway_enhancement_agent.gap_intelligence import load_gap_intelligence_config

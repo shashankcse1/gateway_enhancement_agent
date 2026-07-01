@@ -25,8 +25,7 @@ class CombinedValidation:
 
 
 def _skip_agent_self_tests(changed_files: list[str] | None) -> bool:
-    if os.environ.get("AGENT_BACKGROUND_MODE", "").strip() != "1":
-        return False
+    """Test-only target changes do not require re-running the agent's own pytest suite."""
     if not changed_files:
         return False
     return all(f.startswith("backend/tests/") for f in changed_files)

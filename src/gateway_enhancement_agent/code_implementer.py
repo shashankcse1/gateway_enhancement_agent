@@ -19,6 +19,7 @@ from gateway_enhancement_agent.gap_intelligence import (
 )
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
+from gateway_enhancement_agent.prompt_budget import trim_to_token_budget
 from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.progress_log import log
 from gateway_enhancement_agent.security_guardrails import SecurityGuardrails
@@ -345,6 +346,9 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                 skipped_reason=None if files_written else "LLM response contained no valid file blocks",
             )
         except Exception as exc:  # noqa: BLE001
+            scaffold = self._scaffold_on_failure(gap, cycle_id=cycle_id, artifact_dir=artifact_dir, model=model)
+            if scaffold is not None:
+                return scaffold
             return ImplementResult(
                 attempted=True,
                 succeeded=False,
@@ -353,26 +357,55 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                 error=str(exc),
             )
 
+    def _scaffold_on_failure(
+        self,
+        gap: GapItem,
+        *,
+        cycle_id: int,
+        artifact_dir: Path,
+        model: str,
+    ) -> ImplementResult | None:
+        delivery = DeliveryConfig.from_env()
+        if not delivery.tests_first or os.environ.get("AGENT_SCAFFOLD_EASY_GAPS", "1") != "1":
+            return None
+        if not is_auth_only_gap(gap):
+            return None
+        return self._try_scaffold_first(gap, cycle_id=cycle_id, artifact_dir=artifact_dir, model=model)
+
+    def _context_limits(self) -> tuple[int, int, int]:
+        delivery = DeliveryConfig.from_env()
+        if delivery.tests_first:
+            return (
+                self.config.tests_first_max_context_files,
+                self.config.tests_first_max_file_chars,
+                max(512, self.config.effective_max_prompt_tokens() // 2),
+            )
+        return (
+            self.config.max_context_files,
+            self.config.max_file_chars,
+            self.config.effective_max_prompt_tokens(),
+        )
+
     def _build_context(self, repo: Path, gap: GapItem) -> str:
+        max_files, max_file_chars, max_total_tokens = self._context_limits()
         paths = self._context_paths(repo, gap)
-        chunks: list[str] = []
-        for rel in paths[: self.config.max_context_files]:
-            text = read_repo_file(rel)
-            if not text:
-                continue
-            if len(text) > self.config.max_file_chars:
-                text = text[: self.config.max_file_chars] + "\n... [truncated]"
-            chunks.append(f"### `{rel}`\n```\n{text}\n```")
-        if not chunks:
-            return "_No context files found._"
-        return "\n\n".join(chunks)
+
+        def _read(rel: str) -> str:
+            return read_repo_file(rel) or ""
+
+        return build_context_from_paths(
+            paths,
+            read_file=_read,
+            max_files=max_files,
+            max_file_chars=max_file_chars,
+            max_total_tokens=max_total_tokens,
+        )
 
     def _context_paths(self, repo: Path, gap: GapItem) -> list[str]:
         delivery = DeliveryConfig.from_env()
         if delivery.tests_first:
             template_rel = pick_test_template(gap.route or gap.title)
             candidates = [
-                "backend/AGENTS.md",
                 template_rel,
                 "backend/tests/test_gateway_inference.py",
             ]
@@ -391,6 +424,8 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                 ]
             )
         candidates.extend(["frontend/app.js", "frontend/views/routing-gateway.html"])
+        if delivery.tests_first:
+            candidates = [c for c in candidates if c.startswith("backend/tests/")]
         seen: set[str] = set()
         ordered: list[str] = []
         for rel in candidates:

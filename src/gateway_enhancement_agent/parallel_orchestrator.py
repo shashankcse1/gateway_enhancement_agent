@@ -20,6 +20,7 @@ from gateway_enhancement_agent.file_blocks import extract_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.progress_log import log
+from gateway_enhancement_agent.prompt_budget import build_context_from_paths
 from gateway_enhancement_agent.security_guardrails import GuardrailResult, SecurityGuardrails
 
 
@@ -376,13 +377,28 @@ Produce file blocks ONLY for files in your component scope.
         )
 
     def _worker_context(self, repo: Path, worker: WorkerSpec, shared_context: str) -> str:
+        delivery = DeliveryConfig.from_env()
+        if delivery.tests_first:
+            max_files = min(2, len(worker.path_hints))
+            max_chars = self.llm_config.tests_first_max_file_chars
+            budget = max(512, self.llm_config.effective_max_prompt_tokens() // 3)
+            built = build_context_from_paths(
+                [p for p in worker.path_hints if p.startswith("backend/tests/")][:max_files] or worker.path_hints[:max_files],
+                read_file=read_repo_file,
+                max_files=max_files,
+                max_file_chars=max_chars,
+                max_total_tokens=budget,
+            )
+            if built != "_No context files found._":
+                return built
         chunks: list[str] = []
-        for rel in worker.path_hints:
+        per_file = min(self.llm_config.max_file_chars // 2, self.llm_config.tests_first_max_file_chars)
+        for rel in worker.path_hints[: self.llm_config.tests_first_max_context_files]:
             text = read_repo_file(rel)
             if not text:
                 continue
-            if len(text) > self.llm_config.max_file_chars // 2:
-                text = text[: self.llm_config.max_file_chars // 2] + "\n... [truncated]"
+            if len(text) > per_file:
+                text = text[:per_file] + "\n... [truncated]"
             chunks.append(f"### `{rel}`\n```\n{text}\n```")
         if chunks:
             return "\n\n".join(chunks)

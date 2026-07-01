@@ -18,6 +18,8 @@ def test_delivery_config_tests_first_mode() -> None:
 def test_suggest_test_path_from_route() -> None:
     path = suggest_test_path("inv-003", "GET /v1/vector_stores")
     assert path == "backend/tests/test_gateway_get_v1_vector_stores.py"
+    path_only = suggest_test_path("inv-003", "/v1/vector_stores")
+    assert path_only == "backend/tests/test_gateway_get_v1_vector_stores.py"
 
 
 def test_filter_new_files_only_drops_existing(tmp_path) -> None:

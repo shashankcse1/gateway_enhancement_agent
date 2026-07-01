@@ -9,24 +9,11 @@ from gateway_enhancement_agent.code_implementer import CodeImplementer
 from gateway_enhancement_agent.delivery_config import suggest_test_path
 from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
+from tests.llm_config_factory import make_llm_config
 
 
 def test_local_llm_health_when_reachable() -> None:
-    cfg = LLMConfig(
-        provider="ollama",
-        base_url="http://127.0.0.1:11434",
-        model="qwen2.5-coder:7b",
-        fallback_models=[],
-        timeout_seconds=5,
-        temperature=0.2,
-        num_ctx=4096,
-        num_gpu=-1,
-        num_thread=0,
-        auto_implement=True,
-        max_context_files=4,
-        max_file_chars=1000,
-        allowed_path_prefixes=["backend/"],
-    )
+    cfg = make_llm_config(timeout_seconds=5, max_file_chars=1000)
     payload = json.dumps({"models": [{"name": "qwen2.5-coder:7b"}]}).encode()
 
     class FakeResp:
@@ -58,21 +45,7 @@ def test_code_implementer_applies_file_blocks(mock_target_repo, monkeypatch) -> 
         competitor_ids=[],
         related_capabilities=[],
     )
-    cfg = LLMConfig(
-        provider="ollama",
-        base_url="http://127.0.0.1:11434",
-        model="test-model",
-        fallback_models=[],
-        timeout_seconds=5,
-        temperature=0.2,
-        num_ctx=4096,
-        num_gpu=-1,
-        num_thread=0,
-        auto_implement=True,
-        max_context_files=4,
-        max_file_chars=5000,
-        allowed_path_prefixes=["backend/"],
-    )
+    cfg = make_llm_config(model="test-model", max_file_chars=5000)
     client = MagicMock()
     client.health.return_value = MagicMock(
         reachable=True,
@@ -106,21 +79,7 @@ def test_code_implementer_applies_file_blocks(mock_target_repo, monkeypatch) -> 
 
 
 def test_code_implementer_skips_when_auto_disabled(mock_target_repo) -> None:
-    cfg = LLMConfig(
-        provider="ollama",
-        base_url="http://127.0.0.1:11434",
-        model="test-model",
-        fallback_models=[],
-        timeout_seconds=5,
-        temperature=0.2,
-        num_ctx=4096,
-        num_gpu=-1,
-        num_thread=0,
-        auto_implement=False,
-        max_context_files=4,
-        max_file_chars=5000,
-        allowed_path_prefixes=["backend/"],
-    )
+    cfg = make_llm_config(model="test-model", auto_implement=False, max_file_chars=5000)
     gap = GapItem(
         gap_id="x",
         title="t",

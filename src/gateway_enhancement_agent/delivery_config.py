@@ -105,12 +105,16 @@ def filter_blocks_for_delivery(blocks: dict[str, str], repo_root) -> tuple[dict[
 
 def suggest_test_path(gap_id: str, route: str | None) -> str:
     if route:
-        parts = route.strip().split(None, 1)
-        method = parts[0].lower() if parts else ""
-        path_part = parts[1].strip("/") if len(parts) > 1 else ""
+        text = route.strip()
+        parts = text.split(None, 1)
+        if len(parts) == 2 and parts[0].upper() in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+            method = parts[0].lower()
+            path_part = parts[1].strip("/")
+        else:
+            method = "get"
+            path_part = text.lstrip("/")
         slug = path_part.lower().replace("/", "_").replace("{", "").replace("}", "").replace("-", "_")
-        if method:
-            slug = f"{method}_{slug}" if slug else method
+        slug = f"{method}_{slug}" if slug else method
         return f"backend/tests/test_gateway_{slug}.py"
     slug = gap_id.lower().replace("-", "_")
     return f"backend/tests/test_gap_{slug}.py"
