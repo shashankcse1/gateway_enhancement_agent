@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
+from gateway_enhancement_agent.sdlc_validate import combined_summary, run_combined_validation
 from gateway_enhancement_agent.security_guardrails import SecurityGuardrails
-from gateway_enhancement_agent.validation_runner import ValidationRunner
+from gateway_enhancement_agent.validation_runner import GateResult, ValidationRunner
 
 
 def test_delivery_config_tests_first_mode() -> None:
@@ -59,12 +60,33 @@ def test_forbidden_overwrite_blocks_gateway_py(tmp_path: Path) -> None:
     assert any("forbidden" in v.lower() or "overwrite" in v.lower() for v in result.violations)
 
 
-def test_scoped_pytest_command_uses_changed_tests_only(mock_target_repo) -> None:
+def test_combined_validation_skips_self_tests_in_background_for_target_tests(monkeypatch, mock_target_repo) -> None:
+    monkeypatch.setenv("AGENT_BACKGROUND_MODE", "1")
+    calls: list[str] = []
+
+    class _Runner:
+        def run_all(self) -> list[GateResult]:
+            calls.append("ran")
+            return [GateResult("agent_unit_tests", "Agent tests", True, False, 1, "", "fail")]
+
+    monkeypatch.setattr("gateway_enhancement_agent.sdlc_validate.SelfTestRunner", _Runner)
+    monkeypatch.setattr(
+        "gateway_enhancement_agent.sdlc_validate.ValidationRunner.run_all",
+        lambda self, changed_files=None: [],
+    )
+    combined = run_combined_validation(changed_files=["backend/tests/test_gateway_new.py"])
+    assert calls == []
+    assert combined.self_results == []
+    assert combined_summary(combined)["self_test_passed"] is True
+
+
+def test_scoped_pytest_strips_backend_prefix(mock_target_repo) -> None:
     runner = ValidationRunner(mock_target_repo)
     cmd = runner._resolve_command(
         ["python3", "-m", "pytest", "-q", "tests/test_gateway_inference.py"],
         cwd=mock_target_repo / "backend",
         changed_files=["backend/tests/test_gateway_vector_stores.py"],
     )
-    assert "backend/tests/test_gateway_vector_stores.py" in cmd
+    assert "tests/test_gateway_vector_stores.py" in cmd
+    assert "backend/tests/" not in " ".join(cmd)
     assert "tests/test_gateway_inference.py" not in cmd

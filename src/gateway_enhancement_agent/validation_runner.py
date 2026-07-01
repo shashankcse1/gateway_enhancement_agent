@@ -64,8 +64,14 @@ class ValidationRunner:
                     stderr_tail="",
                 )
         cwd_rel = gate.get("cwd", ".")
-        cwd = self.repo if cwd_rel == "." else self.repo / cwd_rel
-        command = self._resolve_command(list(gate["command"]), cwd=cwd, changed_files=changed_files)
+        if gate_id == "agent_unit_tests":
+            # launchd runs from /tmp; Desktop-linked source_root may be TCC-blocked as cwd.
+            cwd = Path(os.environ.get("AGENT_DATA_DIR", "/tmp"))
+            tests_dir = source_root() / "tests"
+            command = [self._python_for_cwd(cwd), "-m", "pytest", "-q", str(tests_dir)]
+        else:
+            cwd = self.repo if cwd_rel == "." else self.repo / cwd_rel
+            command = self._resolve_command(list(gate["command"]), cwd=cwd, changed_files=changed_files)
         timeout = int(gate.get("timeout_seconds", 300))
         log(f"gate {gate_id}: {gate.get('label', gate_id)}", phase="validate")
         env = os.environ.copy()
@@ -187,12 +193,14 @@ class ValidationRunner:
         )
         if not only_tests:
             return resolved
+        # Gate cwd is usually backend/; pytest paths must be tests/..., not backend/tests/...
+        scoped_tests = [f.removeprefix("backend/") for f in test_files]
         m_idx = resolved.index("-m")
         first_test_idx = m_idx + 2
         while first_test_idx < len(resolved) and not resolved[first_test_idx].startswith("tests/"):
             first_test_idx += 1
         if first_test_idx < len(resolved):
-            resolved = resolved[:first_test_idx] + test_files
+            resolved = resolved[:first_test_idx] + scoped_tests
         return resolved
 
     def _python_for_cwd(self, cwd: Path) -> str:

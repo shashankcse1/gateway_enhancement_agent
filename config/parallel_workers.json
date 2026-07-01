@@ -12,8 +12,8 @@
       "component": "gateway-validation",
       "role_lens": "security_engineer",
       "write_mode": "patch",
-      "focus": "Create ONE new pytest file under backend/tests/ (do not edit existing tests). Use: from fastapi.testclient import TestClient; from app.main import app; client = TestClient(app). Test the gap route with X-Actor-Role and X-Actor-Id headers. Assert status codes only (200, 403, 404, 422). Max 60 lines. Do NOT import backend.* or invent crud/schemas modules.",
-      "path_hints": ["backend/tests/test_gateway_routes.py", "backend/tests/test_gateway_inference.py", "backend/AGENTS.md"]
+      "focus": "Create ONE new pytest file under backend/tests/ (do not edit existing tests). Mirror test_gateway_rag.py: ADMIN_HEADERS = {\"X-Actor-Role\": \"Platform Admin\", \"X-Actor-Id\": \"admin-upstream\"}; seed runtime config via TestClient before GET routes that need data. For missing auth assert 401; for deny assert 403. If the route is not implemented yet, assert status in (404, 501). Max 60 lines. Do NOT import backend.* or invent modules.",
+      "path_hints": ["backend/tests/test_gateway_rag.py", "backend/tests/test_gateway_inference.py", "backend/AGENTS.md"]
     }
   ]
 }

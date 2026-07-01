@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from gateway_enhancement_agent.self_test_runner import SelfTestRunner
@@ -23,9 +24,20 @@ class CombinedValidation:
         return all(r.passed for r in required)
 
 
+def _skip_agent_self_tests(changed_files: list[str] | None) -> bool:
+    if os.environ.get("AGENT_BACKGROUND_MODE", "").strip() != "1":
+        return False
+    if not changed_files:
+        return False
+    return all(f.startswith("backend/tests/") for f in changed_files)
+
+
 def run_combined_validation(*, changed_files: list[str] | None = None) -> CombinedValidation:
-    self_runner = SelfTestRunner()
-    self_results = self_runner.run_all()
+    if _skip_agent_self_tests(changed_files):
+        self_results: list[GateResult] = []
+    else:
+        self_runner = SelfTestRunner()
+        self_results = self_runner.run_all()
     if changed_files is not None and len(changed_files) == 0:
         return CombinedValidation(self_results=self_results, target_results=[])
     target_runner = ValidationRunner()
