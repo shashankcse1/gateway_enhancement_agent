@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import load_json, target_repo
-from gateway_enhancement_agent.delivery_config import DeliveryConfig
+from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
 from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.file_blocks import extract_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
@@ -139,6 +139,10 @@ class ParallelOrchestrator:
         artifact_dir: Path,
     ) -> ParallelImplementResult:
         implement_workers = [w for w in self.parallel_config.workers if w.stage == "implement" and w.write_mode == "patch"]
+        delivery = DeliveryConfig.from_env()
+        if delivery.tests_first:
+            preferred = set(delivery.prefer_implement_workers) or {"backend_tests"}
+            implement_workers = [w for w in implement_workers if w.worker_id in preferred]
         if not implement_workers:
             return ParallelImplementResult(mode="parallel", error="No implement workers configured")
 
@@ -159,8 +163,6 @@ class ParallelOrchestrator:
         )
 
         merged = self._merge_results(gap, cycle_id, design_brief, implement_results, artifact_dir)
-        from gateway_enhancement_agent.delivery_config import filter_blocks_for_delivery
-
         repo = target_repo()
         filtered_blocks, dropped = filter_blocks_for_delivery(merged.merged_blocks, repo)
         if dropped:
@@ -340,6 +342,10 @@ Target root: {repo}
 
 Produce file blocks ONLY for files in your component scope.
 """
+        delivery = DeliveryConfig.from_env()
+        if delivery.tests_first and worker.worker_id == "backend_tests":
+            target_test = suggest_test_path(gap.gap_id, gap.route)
+            user += f"\n## Required output\nCreate ONE new file: `{target_test}` (file must not exist yet).\n"
         response = self.client.chat(system=system, user=user, label=f"implement:{worker.worker_id}")
         blocks = extract_file_blocks(response)
         return SubagentResult(

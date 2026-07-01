@@ -93,11 +93,18 @@ class GitAutomator:
 
         feature_branch = f"{self.config.branch_prefix}{cycle_id:04d}"
         merge_branch = self.config.merge_branch or start_branch
-        message = (
-            f"agent: close {gap.gap_id} — {gap.title}\n\n"
-            f"Autonomous enhancement cycle {cycle_id:04d}.\n"
-            f"Gap score: {gap.score}. Source: {gap.source}."
-        )
+        if files_written and all(f.startswith("backend/tests/") for f in files_written):
+            message = (
+                f"agent(tests): cover {gap.gap_id} — {gap.title}\n\n"
+                f"Autonomous test cycle {cycle_id:04d}.\n"
+                f"Files: {', '.join(files_written)}"
+            )
+        else:
+            message = (
+                f"agent: close {gap.gap_id} — {gap.title}\n\n"
+                f"Autonomous enhancement cycle {cycle_id:04d}.\n"
+                f"Gap score: {gap.score}. Source: {gap.source}."
+            )
         try:
             self._run("git", "rev-parse", "--is-inside-work-tree")
             self._ensure_clean_enough()

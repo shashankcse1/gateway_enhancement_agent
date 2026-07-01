@@ -1,14 +1,23 @@
 {
-  "version": 1,
+  "version": 2,
+  "delivery_mode": "tests_first",
   "serial_llm": true,
   "max_parallel_workers": 1,
+  "max_files_per_cycle": 1,
+  "new_files_only": true,
   "refresh_competitor_research_hours": 24,
+  "allowed_write_prefixes": ["backend/tests/"],
+  "forbidden_path_prefixes": [
+    "frontend/",
+    "backend/docs/governance/",
+    "backend/app/routers/"
+  ],
   "forbidden_overwrite_paths": [
     "backend/app/routers/gateway.py",
     "frontend/app.js",
     "frontend/views/routing-gateway.html"
   ],
-  "prefer_implement_workers": ["backend_tests", "governance_docs", "backend_service", "frontend_ui"],
+  "prefer_implement_workers": ["backend_tests"],
   "min_lines_large_files": {
     "backend/app/routers/gateway.py": 500,
     "frontend/views/routing-gateway.html": 400,

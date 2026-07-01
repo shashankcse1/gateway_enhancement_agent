@@ -21,7 +21,8 @@ def _gap() -> GapItem:
     )
 
 
-def test_parallel_orchestrator_merges_non_conflicting_workers(mock_target_repo, tmp_path) -> None:
+def test_parallel_orchestrator_merges_non_conflicting_workers(mock_target_repo, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "full")
     cfg = ParallelConfig(
         enabled=True,
         max_workers=2,
@@ -52,7 +53,8 @@ def test_parallel_orchestrator_merges_non_conflicting_workers(mock_target_repo, 
     assert (artifact_dir / "subagents" / "backend_tests.md").exists()
 
 
-def test_parallel_orchestrator_uses_synthesizer_on_conflict(mock_target_repo, tmp_path) -> None:
+def test_parallel_orchestrator_uses_synthesizer_on_conflict(mock_target_repo, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "full")
     cfg = ParallelConfig(
         enabled=True,
         max_workers=2,

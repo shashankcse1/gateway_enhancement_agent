@@ -1,9 +1,9 @@
 {
-  "version": 2,
+  "version": 3,
   "enabled": true,
   "max_workers": 1,
-  "synthesizer_enabled": true,
-  "run_review_stage": true,
+  "synthesizer_enabled": false,
+  "run_review_stage": false,
   "workers": [
     {
       "id": "backend_tests",
@@ -12,81 +12,8 @@
       "component": "gateway-validation",
       "role_lens": "security_engineer",
       "write_mode": "patch",
-      "focus": "Add focused pytest under backend/tests/ using TestClient(app) from app.main. Include allow and deny paths. Do NOT import modules that do not exist. Follow patterns in test_gateway_routes.py.",
+      "focus": "Create ONE new pytest file under backend/tests/ (do not edit existing tests). Use: from fastapi.testclient import TestClient; from app.main import app; client = TestClient(app). Test the gap route with X-Actor-Role and X-Actor-Id headers. Assert status codes only (200, 403, 404, 422). Max 60 lines. Do NOT import backend.* or invent crud/schemas modules.",
       "path_hints": ["backend/tests/test_gateway_routes.py", "backend/tests/test_gateway_inference.py", "backend/AGENTS.md"]
-    },
-    {
-      "id": "governance_docs",
-      "label": "Governance alignment",
-      "stage": "implement",
-      "component": "gateway-governance",
-      "role_lens": null,
-      "write_mode": "patch",
-      "focus": "Update API inventory and coverage map when the gap is addressed. Mark UI coverage accurately.",
-      "path_hints": [
-        "backend/docs/governance/api-inventory-and-ui-map.md",
-        "backend/docs/governance/ui-api-design-coverage-map.md"
-      ]
-    },
-    {
-      "id": "backend_service",
-      "label": "Backend service module",
-      "stage": "implement",
-      "component": "gateway-router",
-      "role_lens": null,
-      "write_mode": "patch",
-      "focus": "Create a NEW focused module under backend/app/services/ for the gap. Do NOT output backend/app/routers/gateway.py or frontend/app.js.",
-      "path_hints": ["backend/app/services/", "backend/AGENTS.md"]
-    },
-    {
-      "id": "frontend_ui",
-      "label": "Operator UI",
-      "stage": "implement",
-      "component": "gateway-operator-ui",
-      "role_lens": "frontend_ui_expert",
-      "write_mode": "patch",
-      "focus": "Wire control-center UI in frontend/views/ when API inventory marks Partial/Gap. Do NOT output frontend/app.js or frontend/views/routing-gateway.html — add small partials only.",
-      "path_hints": ["frontend/views/", "frontend/app.js"]
-    },
-    {
-      "id": "security_architect",
-      "label": "Security Architect review",
-      "stage": "review",
-      "component": "gateway-authz-audit",
-      "role_lens": "security_architect",
-      "write_mode": "review",
-      "focus": "Review merged proposal for authz, least privilege, trust boundaries, and production-safe defaults. Flag BLOCKER if unsafe.",
-      "path_hints": ["backend/AGENTS.md", "backend/app/routers/gateway.py"]
-    },
-    {
-      "id": "audit_architect",
-      "label": "Audit Architect review",
-      "stage": "review",
-      "component": "gateway-authz-audit",
-      "role_lens": "audit_architect",
-      "write_mode": "review",
-      "focus": "Verify mutation audit, deny-path evidence, and traceability for changed endpoints.",
-      "path_hints": ["backend/AGENTS.md"]
-    },
-    {
-      "id": "ciso_lens",
-      "label": "CISO review",
-      "stage": "review",
-      "component": "gateway-governance",
-      "role_lens": "ciso_lens",
-      "write_mode": "review",
-      "focus": "Assess blast radius, residual risk, compensating controls, and go/no-go recommendation.",
-      "path_hints": ["backend/docs/security/residual-and-accepted-risk-register.md"]
-    },
-    {
-      "id": "cloud_engineer",
-      "label": "Cloud Engineer review",
-      "stage": "review",
-      "component": "gateway-router",
-      "role_lens": "cloud_engineer",
-      "write_mode": "review",
-      "focus": "Validate deployability, rollback, observability hooks, rate limits, and operational runbook impact. Note microservice need only if triggers in components.json apply.",
-      "path_hints": ["backend/AGENTS.md", "operations-quickstart.md"]
     }
   ]
 }

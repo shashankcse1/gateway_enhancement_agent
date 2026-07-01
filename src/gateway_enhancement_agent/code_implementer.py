@@ -8,7 +8,7 @@ from pathlib import Path
 
 from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.file_blocks import apply_file_blocks, extract_file_blocks
-from gateway_enhancement_agent.delivery_config import filter_blocks_for_delivery
+from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
@@ -47,6 +47,12 @@ class CodeImplementer:
         self.config = config or LLMConfig.from_env()
         self.client = client or LocalLLMClient(self.config)
         self.parallel_config = ParallelConfig.from_env()
+
+    def _allowed_prefixes(self) -> list[str]:
+        delivery = DeliveryConfig.from_env()
+        if delivery.allowed_write_prefixes:
+            return delivery.allowed_write_prefixes
+        return self.config.allowed_path_prefixes
 
     def implement(
         self,
@@ -162,7 +168,7 @@ class CodeImplementer:
             files_written = apply_file_blocks(
                 repo,
                 "\n\n".join(f"```file:{p}\n{c.rstrip()}\n```" for p, c in sorted(blocks.items())),
-                allowed_prefixes=self.config.allowed_path_prefixes,
+                allowed_prefixes=self._allowed_prefixes(),
             )
             if files_written:
                 log(f"applied files: {', '.join(files_written)}", phase="implement")
@@ -200,13 +206,47 @@ class CodeImplementer:
     ) -> ImplementResult:
         repo = target_repo()
         context = self._build_context(repo, gap)
-        system = (
-            "You are a senior gateway platform engineer. "
-            "Implement minimal, correct code changes in the target repository. "
-            "Follow security, audit, and least-privilege rules from AGENTS.md. "
-            + self.FILE_BLOCK_INSTRUCTION
-        )
-        user = f"""# Implementation task — cycle {cycle_id:04d}
+        delivery = DeliveryConfig.from_env()
+        if delivery.tests_first:
+            target_test = suggest_test_path(gap.gap_id, gap.route)
+            system = (
+                "You write focused pytest files for the AgentHub gateway. "
+                "Use TestClient(app) from app.main only. No backend.* imports. "
+                + self.FILE_BLOCK_INSTRUCTION
+            )
+            user = f"""# Test task — cycle {cycle_id:04d}
+
+## Gap
+- ID: {gap.gap_id}
+- Title: {gap.title}
+- Route: {gap.route or 'N/A'}
+
+## Design brief
+{design_brief}
+
+## Required output
+Create ONE new file: `{target_test}`
+
+## Example pattern
+```file:backend/tests/test_gateway_routes.py
+from fastapi.testclient import TestClient
+from app.main import app
+client = TestClient(app)
+```
+
+## Context
+{context}
+
+Write tests for allow/deny paths for the gap route. Keep under 60 lines.
+"""
+        else:
+            system = (
+                "You are a senior gateway platform engineer. "
+                "Implement minimal, correct code changes in the target repository. "
+                "Follow security, audit, and least-privilege rules from AGENTS.md. "
+                + self.FILE_BLOCK_INSTRUCTION
+            )
+            user = f"""# Implementation task — cycle {cycle_id:04d}
 
 ## Gap
 - ID: {gap.gap_id}
@@ -230,6 +270,15 @@ Implement the smallest correct slice for this gap. Output complete files to crea
             llm_path = artifact_dir / "local_llm_response.md"
             llm_path.write_text(response, encoding="utf-8")
             blocks = extract_file_blocks(response)
+            blocks, _dropped = filter_blocks_for_delivery(blocks, repo)
+            if not blocks:
+                return ImplementResult(
+                    attempted=True,
+                    succeeded=False,
+                    model=model,
+                    implementation_mode="single",
+                    skipped_reason="No deliverable blocks after delivery filter",
+                )
             pre_apply = SecurityGuardrails().check_blocks(blocks, repo_root=repo)
             if not pre_apply.passed:
                 return ImplementResult(
@@ -241,8 +290,8 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                 )
             files_written = apply_file_blocks(
                 repo,
-                response,
-                allowed_prefixes=self.config.allowed_path_prefixes,
+                "\n\n".join(f"```file:{p}\n{c.rstrip()}\n```" for p, c in sorted(blocks.items())),
+                allowed_prefixes=self._allowed_prefixes(),
             )
             return ImplementResult(
                 attempted=True,
@@ -277,11 +326,19 @@ Implement the smallest correct slice for this gap. Output complete files to crea
         return "\n\n".join(chunks)
 
     def _context_paths(self, repo: Path, gap: GapItem) -> list[str]:
-        candidates = [
-            "backend/AGENTS.md",
-            "backend/docs/governance/api-inventory-and-ui-map.md",
-            "backend/app/routers/gateway.py",
-        ]
+        delivery = DeliveryConfig.from_env()
+        if delivery.tests_first:
+            candidates = [
+                "backend/AGENTS.md",
+                "backend/tests/test_gateway_routes.py",
+                "backend/tests/test_gateway_inference.py",
+            ]
+        else:
+            candidates = [
+                "backend/AGENTS.md",
+                "backend/docs/governance/api-inventory-and-ui-map.md",
+                "backend/app/routers/gateway.py",
+            ]
         if gap.route:
             route_key = gap.route.strip("/").replace("/", "_")
             candidates.extend(

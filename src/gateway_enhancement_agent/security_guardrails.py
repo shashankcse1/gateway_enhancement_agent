@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from gateway_enhancement_agent.config import load_json, target_repo
 from gateway_enhancement_agent.delivery_config import DeliveryConfig
@@ -100,7 +101,38 @@ class SecurityGuardrails:
                     )
             if any(rel.endswith(p) or rel == p for p in self.require_review_for_paths):
                 warnings.append(f"Privileged path modified: `{rel}` — role-lens review required")
+            violations.extend(self._check_test_imports(rel, content, Path(repo)))
         return GuardrailResult(passed=not violations, violations=violations, warnings=warnings)
+
+    def _check_test_imports(self, rel: str, content: str, repo: Path) -> list[str]:
+        if not rel.startswith("backend/tests/") or not rel.endswith(".py"):
+            return []
+        violations: list[str] = []
+        try:
+            tree = ast.parse(content)
+        except SyntaxError:
+            return violations
+        backend_root = repo / "backend"
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("backend."):
+                        violations.append(f"Test `{rel}` must not import `{alias.name}` — use `app.*` only")
+            elif isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                if mod.startswith("backend."):
+                    violations.append(f"Test `{rel}` must not import `{mod}` — use `app.*` only")
+                if mod.startswith("app."):
+                    if mod == "app.main":
+                        continue
+                    rel_path = mod.replace(".", "/")
+                    candidates = [
+                        backend_root / f"{rel_path}.py",
+                        backend_root / rel_path / "__init__.py",
+                    ]
+                    if not any(p.is_file() for p in candidates):
+                        violations.append(f"Test `{rel}` imports missing module `{mod}`")
+        return violations
 
     def check_reviews(self, reviews: dict[str, str]) -> GuardrailResult:
         violations: list[str] = []

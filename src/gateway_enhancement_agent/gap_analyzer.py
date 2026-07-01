@@ -50,6 +50,10 @@ class GapAnalyzer:
             priority = 1 if gap.coverage.lower() == "gap" else 2
             comp_ids, cap_ids = self._match_capabilities(gap.route)
             score = self._base_score(gap.coverage, priority)
+            if gap.coverage and gap.coverage.lower() == "partial" and gap.route:
+                score -= 8
+            if gap.coverage and gap.coverage.lower() == "gap" and comp_ids:
+                score -= 3
             if any(
                 cap.priority == 1
                 for profile in self.competitors.load_profiles()

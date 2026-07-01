@@ -7,6 +7,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _test_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("AGENT_CONFIG_DIR", str(root / "config"))
     monkeypatch.setenv("AGENT_FULLY_AUTONOMOUS", "0")
     monkeypatch.setenv("WEEKLY_EMAIL_ENABLED", "0")
     monkeypatch.setenv("COMPETITOR_WEB_RESEARCH", "0")
@@ -19,6 +21,10 @@ def mock_target_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     docs.mkdir(parents=True)
     (backend / "AGENTS.md").write_text("# Agents contract\n", encoding="utf-8")
     (backend / "app" / "routers").mkdir(parents=True)
+    (backend / "app" / "main.py").write_text(
+        "from fastapi import FastAPI\napp = FastAPI()\n",
+        encoding="utf-8",
+    )
     (backend / "app" / "routers" / "gateway.py").write_text(
         '@router.get("/gateway/routes")\n@router.post("/v1/chat/completions")\n',
         encoding="utf-8",

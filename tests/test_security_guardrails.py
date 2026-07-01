@@ -43,6 +43,18 @@ def test_check_blocks_rejects_syntax_error(tmp_path) -> None:
     assert any("syntax" in v.lower() for v in result.violations)
 
 
+def test_check_blocks_rejects_backend_import_in_test(tmp_path) -> None:
+    guard = SecurityGuardrails()
+    bad = (
+        "from backend.app.crud import vector_stores\n"
+        "def test_x():\n"
+        "    assert True\n"
+    )
+    result = guard.check_blocks({"backend/tests/test_bad.py": bad}, repo_root=tmp_path)
+    assert result.passed is False
+    assert any("backend." in v for v in result.violations)
+
+
 def test_check_blocks_rejects_truncated_governance_shrink(tmp_path) -> None:
     guard = SecurityGuardrails()
     gov = tmp_path / "backend/docs/governance/api-inventory-and-ui-map.md"
