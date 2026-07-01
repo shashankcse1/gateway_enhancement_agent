@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "backoff_enabled": true,
+  "backoff_base_seconds": 300,
+  "backoff_max_seconds": 7200,
+  "backoff_multiplier": 2,
+  "reset_backoff_on_success": true,
+  "failure_statuses": ["failed", "error"]
+}

@@ -30,6 +30,7 @@ from gateway_enhancement_agent.sdlc_validate import (
     combined_summary,
     run_combined_validation,
 )
+from gateway_enhancement_agent.mirror_sync import sync_mirror
 from gateway_enhancement_agent.progress_log import log, log_cycle_banner, log_hint, log_phase_done, log_phase_start
 from gateway_enhancement_agent.state_store import CycleState, StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
@@ -77,14 +78,14 @@ class SDLCPipeline:
             if autonomous:
                 impl_ok = cycle.metadata.get("local_implementation_succeeded")
                 files = list(cycle.metadata.get("local_implementation_files") or [])
+                merge_ok = cycle.metadata.get("merge_succeeded")
                 if not files and not impl_ok:
-                    # Idle cycle (LLM off, no gap, or no applicable blocks) — do not fail on validation.
-                    if not cycle.metadata.get("validation_passed", True) and not cycle.errors:
-                        cycle.metadata["validation_passed"] = True
-                        cycle.metadata["target_validation_skipped"] = True
+                    cycle.status = "failed"
+                    if cycle.active_gap_id and not cycle.errors:
+                        cycle.errors.append("Autonomous cycle produced no implementation for active gap")
                 elif not cycle.metadata.get("validation_passed", False):
                     cycle.status = "failed"
-                elif impl_ok and not cycle.metadata.get("merge_succeeded", False):
+                elif impl_ok and not merge_ok:
                     cycle.status = "failed"
                 elif cycle.errors:
                     cycle.status = "failed"
@@ -110,6 +111,12 @@ class SDLCPipeline:
         research = maybe_refresh_competitor_research()
         cycle.metadata["competitor_web_research"] = research
         self.store.write_json(cycle.cycle_id, "competitor_web_research.json", research)
+        try:
+            mirror = sync_mirror()
+            cycle.metadata["mirror_sync"] = mirror
+            log(f"mirror sync: {len(mirror.get('files_copied', []))} file(s)", phase="discover")
+        except OSError as exc:
+            log(f"mirror sync skipped: {exc}", phase="discover")
         inv = TargetInventory().snapshot()
         comp = CompetitorRegistry().snapshot()
         self.store.write_json(cycle.cycle_id, "inventory_snapshot.json", inv)
@@ -241,6 +248,7 @@ class SDLCPipeline:
         if not summary["passed"] and changed and gap and not summary["target_validation_passed"]:
             failure_text = self._collect_target_failure_text(combined)
             log_phase_start("validate", "pytest repair loop")
+            os.environ["AGENT_ALLOW_TEST_OVERWRITE"] = "1"
             repaired, repair_err = repair_test_file(gap, changed[0], failure_text)
             cycle.metadata["pytest_repair_attempted"] = True
             cycle.metadata["pytest_repair_succeeded"] = repaired

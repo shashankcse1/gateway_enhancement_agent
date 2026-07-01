@@ -234,7 +234,33 @@ def assess_agent_health(
             }
         )
 
-    healthy = not issues
+    meta = last_cycle.get("metadata") or {}
+    if meta.get("local_implementation_skipped"):
+        issues.append(
+            {
+                "code": "implementation_skipped",
+                "severity": "warning",
+                "message": f"Last cycle skipped implementation: {meta['local_implementation_skipped']}",
+            }
+        )
+    if meta.get("local_implementation_succeeded") and not meta.get("merge_succeeded"):
+        issues.append(
+            {
+                "code": "merge_failed",
+                "severity": "critical",
+                "message": "Implementation succeeded but autonomous merge did not.",
+            }
+        )
+    if meta.get("merge_succeeded") and meta.get("merge_pushed") is False:
+        issues.append(
+            {
+                "code": "push_failed",
+                "severity": "critical",
+                "message": "Merge committed locally but push to remote failed.",
+            }
+        )
+
+    healthy = not any(i.get("severity") == "critical" for i in issues)
     return {
         "healthy": healthy,
         "checked_at": now.replace(microsecond=0).isoformat(),

@@ -1,10 +1,13 @@
 {
-  "version": 2,
+  "version": 3,
   "enabled": true,
   "auto_push": true,
   "push_remotes": ["origin"],
+  "push_retries": 3,
+  "push_retry_delay_seconds": 5,
+  "pull_before_branch": true,
   "merge_branch": "",
   "branch_prefix": "agent/cycle-",
   "rollback_on_validation_failure": true,
-  "exclude_paths": [".env", ".runtime/", "artifacts/", "archive/"]
+  "exclude_paths": [".env", ".runtime/", "artifacts/", "archive/", "backend/.venv/"]
 }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "max_validation_failures": 2,
-  "max_pytest_repair_attempts": 1,
+  "max_pytest_repair_attempts": 2,
   "auto_close_covered_routes": true,
   "auto_defer_on_max_failures": true,
   "prefer_auth_only_gaps": true,

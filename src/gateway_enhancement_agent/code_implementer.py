@@ -12,6 +12,7 @@ from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blo
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.gap_intelligence import (
     build_tests_first_user_prompt,
+    is_auth_only_gap,
     normalize_test_blocks,
     pick_test_template,
     scaffold_auth_test,
@@ -88,6 +89,10 @@ class CodeImplementer:
                 skipped_reason=f"Model not installed. Run: ollama pull {self.config.model}",
             )
 
+        scaffold_result = self._try_scaffold_first(gap, cycle_id=cycle_id, artifact_dir=artifact_dir, model=health.model)
+        if scaffold_result is not None:
+            return scaffold_result
+
         if self.parallel_config.enabled:
             parallel_result = self._implement_parallel(
                 gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model
@@ -109,6 +114,48 @@ class CodeImplementer:
                     return single_result
             return parallel_result
         return self._implement_single(gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model)
+
+    def _try_scaffold_first(
+        self,
+        gap: GapItem,
+        *,
+        cycle_id: int,
+        artifact_dir: Path,
+        model: str,
+    ) -> ImplementResult | None:
+        delivery = DeliveryConfig.from_env()
+        if not delivery.tests_first or os.environ.get("AGENT_SCAFFOLD_EASY_GAPS", "1") != "1":
+            return None
+        if not is_auth_only_gap(gap):
+            return None
+        repo = target_repo()
+        target = suggest_test_path(gap.gap_id, gap.route)
+        if (repo / target).is_file():
+            return None
+        blocks = {target: scaffold_auth_test(gap, target)}
+        guard = SecurityGuardrails().check_blocks(blocks, repo_root=repo)
+        if not guard.passed:
+            return None
+        files_written = apply_file_blocks(
+            repo,
+            f"```file:{target}\n{blocks[target].rstrip()}\n```",
+            allowed_prefixes=self._allowed_prefixes(),
+        )
+        if not files_written:
+            return None
+        log(f"scaffold-first: wrote {target}", phase="implement")
+        (artifact_dir / "local_llm_response.md").write_text(
+            f"# Scaffold-first (no LLM)\n\n```file:{target}\n{blocks[target]}\n```\n",
+            encoding="utf-8",
+        )
+        return ImplementResult(
+            attempted=True,
+            succeeded=True,
+            model=model,
+            files_written=files_written,
+            llm_response_path="local_llm_response.md",
+            implementation_mode="scaffold_first",
+        )
 
     def _implement_parallel(
         self,

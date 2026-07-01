@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import config_dir, load_json, target_repo
 from gateway_enhancement_agent.gap_models import GapItem
+from gateway_enhancement_agent.progress_log import log
+from gateway_enhancement_agent.source_sync import sync_source_after_push
 
 
 @dataclass
@@ -21,6 +24,9 @@ class AutonomousConfig:
     rollback_on_validation_failure: bool
     exclude_paths: list[str]
     push_remotes: list[str]
+    push_retries: int
+    push_retry_delay_seconds: float
+    pull_before_branch: bool
 
     @classmethod
     def from_env(cls) -> AutonomousConfig:
@@ -50,6 +56,9 @@ class AutonomousConfig:
             rollback_on_validation_failure=bool(raw.get("rollback_on_validation_failure", True)),
             exclude_paths=list(raw.get("exclude_paths", [])),
             push_remotes=push_remotes,
+            push_retries=int(raw.get("push_retries", 3)),
+            push_retry_delay_seconds=float(raw.get("push_retry_delay_seconds", 5)),
+            pull_before_branch=bool(raw.get("pull_before_branch", True)),
         )
 
 
@@ -108,6 +117,8 @@ class GitAutomator:
         try:
             self._run("git", "rev-parse", "--is-inside-work-tree")
             self._ensure_clean_enough()
+            if self.config.pull_before_branch:
+                self._pull_latest(merge_branch)
             self._run("git", "checkout", "-b", feature_branch)
             staged = self._stage_files(files_written)
             if not staged:
@@ -128,13 +139,13 @@ class GitAutomator:
             push_errors: list[str] = []
             if self.config.auto_push:
                 for remote in self.config.push_remotes:
-                    try:
-                        self._run("git", "push", remote, feature_branch)
-                        self._run("git", "push", remote, merge_branch)
-                    except GitCommandError as exc:
-                        push_errors.append(f"{remote}: {exc}")
+                    err = self._push_with_retry(remote, feature_branch, merge_branch)
+                    if err:
+                        push_errors.append(err)
                 pushed = not push_errors
                 push_ref = merge_branch if pushed else None
+            if pushed:
+                sync_source_after_push(merge_branch=merge_branch, commit_sha=commit_sha)
             if push_errors and not pushed:
                 return MergeResult(
                     attempted=True,
@@ -178,6 +189,24 @@ class GitAutomator:
 
     def current_branch(self) -> str:
         return self._run("git", "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+
+    def _pull_latest(self, branch: str) -> None:
+        self._run("git", "fetch", "origin", branch, check=False)
+        self._run("git", "pull", "--ff-only", "origin", branch, check=False)
+
+    def _push_with_retry(self, remote: str, feature_branch: str, merge_branch: str) -> str | None:
+        last_err = ""
+        for attempt in range(1, self.config.push_retries + 1):
+            try:
+                self._run("git", "push", remote, feature_branch)
+                self._run("git", "push", remote, merge_branch)
+                return None
+            except GitCommandError as exc:
+                last_err = f"{remote}: {exc}"
+                log(f"git push attempt {attempt}/{self.config.push_retries} failed", phase="merge")
+                if attempt < self.config.push_retries:
+                    time.sleep(self.config.push_retry_delay_seconds * attempt)
+        return last_err
 
     def _ensure_clean_enough(self) -> None:
         status = self._run("git", "status", "--porcelain").stdout.splitlines()

@@ -177,6 +177,15 @@ def normalize_test_blocks(
     return blocks
 
 
+def is_auth_only_gap(gap: GapItem) -> bool:
+    """Gaps testable with auth/deny assertions only (no seeding)."""
+    method, path = parse_route(gap.route or gap.title)
+    path_l = (path or "").lower()
+    if "vector_store" in path_l or "mcp" in path_l or "assistant" in path_l:
+        return False
+    return method in {"DELETE", "GET", "POST", "PUT", "PATCH"}
+
+
 def scaffold_auth_test(gap: GapItem, target_path: str) -> str:
     """Deterministic minimal test when LLM output is unusable (auth-only routes)."""
     method, path = parse_route(gap.route or gap.title)

@@ -21,6 +21,8 @@ from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.mirror_sync import sync_mirror
 from gateway_enhancement_agent.progress_log import log_file_path, log_hint, verbose_stderr
+from gateway_enhancement_agent.preflight import preflight_markdown, run_preflight
+from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
 from gateway_enhancement_agent.state_store import StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
 from gateway_enhancement_agent.sdlc_validate import (
@@ -148,6 +150,12 @@ def cmd_analyze(_: argparse.Namespace) -> int:
     if top:
         print(f"Top gap: [{top.gap_id}] {top.title}")
     return 0
+
+
+def cmd_preflight(_: argparse.Namespace) -> int:
+    report = run_preflight()
+    print(preflight_markdown(report))
+    return 0 if report.get("ok") else 1
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -292,6 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser("preflight", help="Check Ollama, git, venv, and mirror before autonomous runs").set_defaults(func=cmd_preflight)
     sub.add_parser("status", help="Show loop state and target repo").set_defaults(func=cmd_status)
     sub.add_parser("discover", help="Refresh web competitor research + print inventory").set_defaults(func=cmd_discover)
     research_p = sub.add_parser("research-competitors", help="Fetch competitor docs from web and extract capabilities")

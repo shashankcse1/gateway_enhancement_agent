@@ -9,12 +9,10 @@ from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.gap_intelligence import (
     adjust_gap_score,
     find_covering_test_files,
+    is_auth_only_gap,
     is_route_covered_in_tests,
     load_gap_intelligence_config,
-    normalize_test_blocks,
     parse_route,
-    route_mentioned_in_content,
-    scaffold_auth_test,
 )
 from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.target_inventory import TargetInventory
@@ -126,6 +124,10 @@ class GapAnalyzer:
             )
 
         for theme_idx, theme in enumerate(self.competitors.optimization_themes()):
+            from gateway_enhancement_agent.delivery_config import DeliveryConfig
+
+            if DeliveryConfig.from_env().tests_first:
+                continue
             items.append(
                 GapItem(
                     gap_id=f"opt-{theme_idx:03d}",

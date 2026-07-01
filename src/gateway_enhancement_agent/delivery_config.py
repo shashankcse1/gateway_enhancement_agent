@@ -86,7 +86,9 @@ def filter_blocks_for_delivery(blocks: dict[str, str], repo_root) -> tuple[dict[
         elif delivery.is_forbidden_overwrite(rel) and (repo / rel).is_file():
             reason = "forbidden overwrite"
         elif delivery.new_files_only and delivery.tests_first and (repo / rel).is_file():
-            reason = "new_files_only — file already exists"
+            allow = os.environ.get("AGENT_ALLOW_TEST_OVERWRITE", "").strip() in {"1", "true", "yes"}
+            if not (allow and rel.startswith("backend/tests/test_gateway_")):
+                reason = "new_files_only — file already exists"
         if reason:
             dropped.append(f"{rel} ({reason})")
             continue
