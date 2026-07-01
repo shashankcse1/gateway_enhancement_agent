@@ -20,7 +20,7 @@ from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.loop_runner import run_loop
 from gateway_enhancement_agent.mirror_sync import sync_mirror
-from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
+from gateway_enhancement_agent.progress_log import log, log_file_path, log_hint
 from gateway_enhancement_agent.state_store import StateStore
 from gateway_enhancement_agent.target_inventory import TargetInventory
 from gateway_enhancement_agent.sdlc_validate import (
@@ -92,6 +92,9 @@ def cmd_analyze(_: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    log_path = log_file_path()
+    if log_path:
+        log_hint(f"Progress log: tail -f {log_path}")
     cycle = SDLCPipeline().run_cycle(skip_validation=args.skip_validation)
     print(f"Cycle {cycle.cycle_id} finished: status={cycle.status}")
     print(f"Artifacts: artifacts/cycle-{cycle.cycle_id:04d}/")

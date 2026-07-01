@@ -7,7 +7,7 @@ import time
 
 from gateway_enhancement_agent.email_notifier import maybe_send_weekly_report
 from gateway_enhancement_agent.git_automation import fully_autonomous
-from gateway_enhancement_agent.sdlc_pipeline import SDLCPipeline
+from gateway_enhancement_agent.progress_log import log
 from gateway_enhancement_agent.state_store import CycleState
 
 
@@ -30,6 +30,10 @@ def run_loop(
         count += 1
         cycle = pipeline.run_cycle(skip_validation=skip_validation)
         completed.append(cycle)
+        log(
+            f"[cycle {cycle.cycle_id}] status={cycle.status} gap={cycle.active_gap_id} "
+            f"artifacts=artifacts/cycle-{cycle.cycle_id:04d}/"
+        )
         print(
             f"[cycle {cycle.cycle_id}] status={cycle.status} "
             f"gap={cycle.active_gap_id} artifacts=artifacts/cycle-{cycle.cycle_id:04d}/"

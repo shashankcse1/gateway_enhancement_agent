@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from gateway_enhancement_agent.config import load_json, source_root, target_repo
+from gateway_enhancement_agent.progress_log import log
 
 _DEFAULT_TOOL_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -41,6 +42,7 @@ class ValidationRunner:
         gate_id = gate.get("id", "")
         if changed_files:
             if gate_id == "frontend_syntax" and not any(f.startswith("frontend/") for f in changed_files):
+                log(f"gate {gate_id}: skipped (no frontend files changed)", phase="validate")
                 return GateResult(
                     gate_id=gate_id,
                     label=gate["label"],
@@ -51,6 +53,7 @@ class ValidationRunner:
                     stderr_tail="",
                 )
             if gate_id == "security_smoke" and not any(f.startswith("frontend/") for f in changed_files):
+                log(f"gate {gate_id}: skipped (no frontend files changed)", phase="validate")
                 return GateResult(
                     gate_id=gate_id,
                     label=gate["label"],
@@ -64,6 +67,7 @@ class ValidationRunner:
         cwd = self.repo if cwd_rel == "." else self.repo / cwd_rel
         command = self._resolve_command(list(gate["command"]), cwd=cwd, changed_files=changed_files)
         timeout = int(gate.get("timeout_seconds", 300))
+        log(f"gate {gate_id}: {gate.get('label', gate_id)}", phase="validate")
         env = os.environ.copy()
         prefix = os.environ.get("AGENT_TOOL_PATH", _DEFAULT_TOOL_PATH)
         env["PATH"] = f"{prefix}:{env.get('PATH', '')}"
@@ -77,6 +81,10 @@ class ValidationRunner:
                 env=env,
             )
             passed = proc.returncode == 0
+            log(
+                f"gate {gate_id}: {'PASS' if passed else 'FAIL'} (exit {proc.returncode})",
+                phase="validate",
+            )
             return GateResult(
                 gate_id=gate["id"],
                 label=gate["label"],
@@ -87,6 +95,7 @@ class ValidationRunner:
                 stderr_tail=(proc.stderr or "")[-2000:],
             )
         except subprocess.TimeoutExpired as exc:
+            log(f"gate {gate_id}: TIMEOUT after {timeout}s", phase="validate")
             return GateResult(
                 gate_id=gate["id"],
                 label=gate["label"],

@@ -14,6 +14,7 @@ from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.file_blocks import extract_file_blocks
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
+from gateway_enhancement_agent.progress_log import log
 from gateway_enhancement_agent.security_guardrails import GuardrailResult, SecurityGuardrails
 
 
@@ -141,6 +142,10 @@ class ParallelOrchestrator:
         if not implement_workers:
             return ParallelImplementResult(mode="parallel", error="No implement workers configured")
 
+        log(
+            f"parallel implement: {len(implement_workers)} worker(s), max_workers={self.parallel_config.max_workers}",
+            phase="implement",
+        )
         subagent_dir = artifact_dir / "subagents"
         subagent_dir.mkdir(parents=True, exist_ok=True)
         implement_results = self._run_workers_parallel(
@@ -161,11 +166,13 @@ class ParallelOrchestrator:
         if dropped:
             merged.merged_blocks = filtered_blocks
             merged.merged_response = self._blocks_to_response(filtered_blocks)
+            log(f"dropped forbidden overwrites: {', '.join(dropped)}", phase="implement")
         merged.guardrail_result = self.guardrails.check_blocks(merged.merged_blocks, repo_root=repo)
 
         review_results: list[SubagentResult] = []
         if self.parallel_config.run_review_stage and merged.merged_blocks:
             review_workers = [w for w in self.parallel_config.workers if w.stage == "review"]
+            log(f"parallel review: {len(review_workers)} worker(s)", phase="implement")
             review_results = self._run_workers_parallel(
                 review_workers,
                 gap=gap,
@@ -253,6 +260,9 @@ class ParallelOrchestrator:
                     encoding="utf-8",
                 )
                 results.append(result)
+                status = "ok" if result.succeeded else "fail"
+                files = ", ".join(sorted(result.file_blocks.keys())) or "—"
+                log(f"worker {result.worker_id} ({worker.stage}) {status}: {files}", phase="implement")
         results.sort(key=lambda r: r.worker_id)
         return results
 
@@ -292,7 +302,7 @@ class ParallelOrchestrator:
 ## Context
 {worker_context}
 """
-            response = self.client.chat(system=system, user=user)
+            response = self.client.chat(system=system, user=user, label=f"review:{worker.worker_id}")
             return SubagentResult(
                 worker_id=worker.worker_id,
                 label=worker.label,
@@ -330,7 +340,7 @@ Target root: {repo}
 
 Produce file blocks ONLY for files in your component scope.
 """
-        response = self.client.chat(system=system, user=user)
+        response = self.client.chat(system=system, user=user, label=f"implement:{worker.worker_id}")
         blocks = extract_file_blocks(response)
         return SubagentResult(
             worker_id=worker.worker_id,
@@ -420,7 +430,8 @@ Produce file blocks ONLY for files in your component scope.
 
 Output final merged file blocks for ALL files.
 """
-        merged_response = self.client.chat(system=system, user=user)
+        log("synthesizer merging conflicting worker outputs", phase="implement")
+        merged_response = self.client.chat(system=system, user=user, label="synthesizer")
         merged_blocks = extract_file_blocks(merged_response)
         if not merged_blocks:
             merged_blocks = {**unique, **{rel: v[0][1] for rel, v in conflicts.items()}}

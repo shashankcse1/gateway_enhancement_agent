@@ -30,7 +30,7 @@ from gateway_enhancement_agent.sdlc_validate import (
     combined_summary,
     run_combined_validation,
 )
-from gateway_enhancement_agent.state_store import CycleState, StateStore
+from gateway_enhancement_agent.progress_log import log, log_hint, log_phase_done, log_phase_start
 from gateway_enhancement_agent.target_inventory import TargetInventory
 
 
@@ -43,6 +43,7 @@ class SDLCPipeline:
         repo = TargetInventory().repo
         cycle = self.store.begin_cycle(str(repo))
         autonomous = fully_autonomous()
+        log_phase_start("cycle", f"#{cycle.cycle_id} target={repo}")
         if autonomous:
             skip_validation = False
             try:
@@ -88,12 +89,15 @@ class SDLCPipeline:
         except Exception as exc:  # noqa: BLE001 — surface pipeline errors in state
             cycle.status = "failed"
             cycle.errors.append(str(exc))
+            log(f"✗ cycle failed: {exc}", phase="cycle")
         finally:
             self.store.update_cycle(cycle)
+            log_phase_done("cycle", f"#{cycle.cycle_id} status={cycle.status}")
         return cycle
 
     def _phase_discover(self, cycle: CycleState) -> CycleState:
         cycle.phase = "discover"
+        log_phase_start("discover", "competitor research + inventory")
         research = maybe_refresh_competitor_research()
         cycle.metadata["competitor_web_research"] = research
         self.store.write_json(cycle.cycle_id, "competitor_web_research.json", research)
@@ -103,10 +107,13 @@ class SDLCPipeline:
         self.store.write_json(cycle.cycle_id, "competitor_snapshot.json", comp)
         cycle.completed_phases.append("discover")
         self.store.update_cycle(cycle)
+        refreshed = "refreshed" if research.get("refreshed") else "cached"
+        log_phase_done("discover", f"web research {refreshed}")
         return cycle
 
     def _phase_analyze(self, cycle: CycleState) -> CycleState:
         cycle.phase = "analyze"
+        log_phase_start("analyze", "gap matrix + backlog")
         analyzer = GapAnalyzer()
         matrix = analyzer.build_matrix()
         self.backlog.sync_from_matrix(matrix, cycle.cycle_id)
@@ -125,19 +132,26 @@ class SDLCPipeline:
             self.backlog.mark_scheduled(top.gap_id, cycle.cycle_id)
         cycle.completed_phases.append("analyze")
         self.store.update_cycle(cycle)
+        if top:
+            log_phase_done("analyze", f"top gap [{top.gap_id}] {top.title}")
+        else:
+            log_phase_done("analyze", "no open gaps")
         return cycle
 
     def _phase_design(self, cycle: CycleState) -> CycleState:
         cycle.phase = "design"
+        log_phase_start("design")
         gap = self._active_gap(cycle)
         if gap:
             self.store.write_text(cycle.cycle_id, "design_brief.md", build_design_brief(gap, cycle.cycle_id))
         cycle.completed_phases.append("design")
         self.store.update_cycle(cycle)
+        log_phase_done("design")
         return cycle
 
     def _phase_implement(self, cycle: CycleState) -> CycleState:
         cycle.phase = "implement"
+        log_phase_start("implement", "Ollama workers (this is the slowest phase)")
         gap = self._active_gap(cycle)
         if gap:
             design_brief = (self.store.cycle_dir(cycle.cycle_id) / "design_brief.md").read_text(encoding="utf-8")
@@ -181,13 +195,23 @@ class SDLCPipeline:
                 cycle.metadata["local_implementation_skipped"] = result.skipped_reason
             if result.error:
                 cycle.errors.append(f"Local implementation: {result.error}")
+            if result.succeeded:
+                log_phase_done("implement", f"wrote {len(result.files_written)} file(s)")
+            elif result.skipped_reason:
+                log_phase_done("implement", f"skipped: {result.skipped_reason}")
+            else:
+                log_phase_done("implement", f"failed: {result.error or 'unknown'}")
+        else:
+            log_phase_done("implement", "no active gap")
         cycle.completed_phases.append("implement")
         self.store.update_cycle(cycle)
         return cycle
 
     def _phase_validate(self, cycle: CycleState) -> CycleState:
         cycle.phase = "validate"
-        combined = run_combined_validation(changed_files=list(cycle.metadata.get("local_implementation_files") or []))
+        changed = list(cycle.metadata.get("local_implementation_files") or [])
+        log_phase_start("validate", f"{len(changed)} changed file(s)")
+        combined = run_combined_validation(changed_files=changed)
         summary = combined_summary(combined)
         self.store.write_json(cycle.cycle_id, "validation_report.json", summary)
         self.store.write_text(
@@ -205,10 +229,12 @@ class SDLCPipeline:
                 cycle.errors.append("Target repo validation gates failed")
         cycle.completed_phases.append("validate")
         self.store.update_cycle(cycle)
+        log_phase_done("validate", "PASS" if summary["passed"] else "FAIL")
         return cycle
 
     def _phase_validate_self_only(self, cycle: CycleState) -> CycleState:
         cycle.phase = "validate"
+        log_phase_start("validate", "agent self-tests only")
         runner = SelfTestRunner()
         results = runner.run_all()
         summary = {
@@ -226,10 +252,12 @@ class SDLCPipeline:
             cycle.errors.append("Agent self-tests failed")
         cycle.completed_phases.append("validate")
         self.store.update_cycle(cycle)
+        log_phase_done("validate", "PASS" if summary["passed"] else "FAIL")
         return cycle
 
     def _phase_merge(self, cycle: CycleState) -> CycleState:
         cycle.phase = "merge"
+        log_phase_start("merge")
         gap = self._active_gap(cycle)
         files = list(cycle.metadata.get("local_implementation_files") or [])
         start_branch = cycle.metadata.get("git_start_branch", "main")
@@ -240,6 +268,7 @@ class SDLCPipeline:
             cycle.metadata["merge_succeeded"] = not bool(files)
             cycle.completed_phases.append("merge")
             self.store.update_cycle(cycle)
+            log_phase_done("merge", cycle.metadata["merge_skipped"])
             return cycle
 
         if not cycle.metadata.get("validation_passed", False):
@@ -261,6 +290,7 @@ class SDLCPipeline:
                 )
             cycle.completed_phases.append("merge")
             self.store.update_cycle(cycle)
+            log_phase_done("merge", "validation failed")
             return cycle
 
         result = automator.commit_and_merge(
@@ -283,10 +313,15 @@ class SDLCPipeline:
         self.store.write_json(cycle.cycle_id, "merge_report.json", merge_report_json(result))
         cycle.completed_phases.append("merge")
         self.store.update_cycle(cycle)
+        if result.succeeded:
+            log_phase_done("merge", f"commit {result.commit_sha or '—'} pushed={result.pushed}")
+        else:
+            log_phase_done("merge", result.skipped_reason or result.error or "skipped")
         return cycle
 
     def _phase_document(self, cycle: CycleState) -> CycleState:
         cycle.phase = "document"
+        log_phase_start("document")
         gap = self._active_gap(cycle)
         if gap:
             self.store.write_text(
@@ -296,10 +331,12 @@ class SDLCPipeline:
             )
         cycle.completed_phases.append("document")
         self.store.update_cycle(cycle)
+        log_phase_done("document")
         return cycle
 
     def _phase_release_prep(self, cycle: CycleState) -> CycleState:
         cycle.phase = "release_prep"
+        log_phase_start("release_prep")
         gap = self._active_gap(cycle)
         passed = bool(cycle.metadata.get("validation_passed", False))
         skipped = bool(cycle.metadata.get("validation_skipped"))
@@ -311,6 +348,7 @@ class SDLCPipeline:
             )
         cycle.completed_phases.append("release_prep")
         self.store.update_cycle(cycle)
+        log_phase_done("release_prep")
         return cycle
 
     def _write_cycle_summary(self, cycle: CycleState) -> None:

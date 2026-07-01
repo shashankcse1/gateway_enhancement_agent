@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from typing import Any
 
 from gateway_enhancement_agent.config import load_json
 from gateway_enhancement_agent.delivery_config import DeliveryConfig
+from gateway_enhancement_agent.progress_log import log
 
 _CHAT_LOCK = threading.Lock()
 
@@ -101,20 +103,23 @@ class LocalLLMClient:
                 error=str(exc),
             )
 
-    def chat(self, *, system: str, user: str) -> str:
+    def chat(self, *, system: str, user: str, label: str | None = None) -> str:
         delivery = DeliveryConfig.from_env()
         if delivery.serial_llm:
             with _CHAT_LOCK:
-                return self._chat_unlocked(system=system, user=user)
-        return self._chat_unlocked(system=system, user=user)
+                return self._chat_unlocked(system=system, user=user, label=label)
+        return self._chat_unlocked(system=system, user=user, label=label)
 
-    def _chat_unlocked(self, *, system: str, user: str) -> str:
+    def _chat_unlocked(self, *, system: str, user: str, label: str | None = None) -> str:
         models = self._list_models()
         model = self._pick_model(models)
         if not model:
             raise RuntimeError(
                 f"No local model available. Install one with: ollama pull {self.config.model}"
             )
+        tag = label or "llm"
+        log(f"Ollama → {tag} (model={model}, timeout={self.config.timeout_seconds}s)", phase="implement")
+        started = time.monotonic()
         options: dict[str, Any] = {
             "temperature": self.config.temperature,
             "num_ctx": self.config.num_ctx,
@@ -137,6 +142,8 @@ class LocalLLMClient:
         content = message.get("content", "")
         if not content.strip():
             raise RuntimeError("Local LLM returned empty response")
+        elapsed = time.monotonic() - started
+        log(f"Ollama ✓ {tag} ({elapsed:.0f}s, {len(content)} chars)", phase="implement")
         return content
 
     def _list_models(self) -> list[str]:

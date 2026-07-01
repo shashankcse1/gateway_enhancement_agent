@@ -13,6 +13,7 @@ from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
 from gateway_enhancement_agent.repo_access import read_repo_file
+from gateway_enhancement_agent.progress_log import log
 from gateway_enhancement_agent.security_guardrails import SecurityGuardrails
 
 
@@ -135,6 +136,8 @@ class CodeImplementer:
             llm_path = artifact_dir / "local_llm_response.md"
             blocks, dropped = filter_blocks_for_delivery(parallel.merged_blocks, repo)
             parallel.merged_blocks = blocks
+            if dropped:
+                log(f"filtered forbidden paths: {', '.join(dropped)}", phase="implement")
             if blocks:
                 parallel.merged_response = ParallelOrchestrator._blocks_to_response(blocks)
             llm_path.write_text(parallel.merged_response, encoding="utf-8")
@@ -161,6 +164,8 @@ class CodeImplementer:
                 "\n\n".join(f"```file:{p}\n{c.rstrip()}\n```" for p, c in sorted(blocks.items())),
                 allowed_prefixes=self.config.allowed_path_prefixes,
             )
+            if files_written:
+                log(f"applied files: {', '.join(files_written)}", phase="implement")
             succeeded = bool(files_written)
             return ImplementResult(
                 attempted=True,
@@ -221,7 +226,7 @@ Target root: {repo}
 Implement the smallest correct slice for this gap. Output complete files to create or replace.
 """
         try:
-            response = self.client.chat(system=system, user=user)
+            response = self.client.chat(system=system, user=user, label="single_implement")
             llm_path = artifact_dir / "local_llm_response.md"
             llm_path.write_text(response, encoding="utf-8")
             blocks = extract_file_blocks(response)
