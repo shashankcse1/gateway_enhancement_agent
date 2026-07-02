@@ -22,7 +22,7 @@
     {
       "id": "cloud_engineer",
       "label": "Cloud Engineer",
-      "mandatory": true,
+      "mandatory": false,
       "checks": ["deployability", "rollback", "observability", "rate_limits"]
     },
     {

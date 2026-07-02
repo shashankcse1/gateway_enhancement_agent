@@ -6,10 +6,12 @@ from pathlib import Path
 
 from gateway_enhancement_agent.config import target_repo
 from gateway_enhancement_agent.gap_analyzer import GapItem
+from gateway_enhancement_agent.route_modules import router_module_for_gap
 
 
 def build_design_brief(gap: GapItem, cycle_id: int) -> str:
     repo = target_repo()
+    router_module = router_module_for_gap(gap)
     comp_line = ", ".join(gap.competitor_ids) if gap.competitor_ids else "N/A"
     caps_line = ", ".join(gap.related_capabilities) if gap.related_capabilities else "N/A"
     return f"""# Design Brief — Cycle {cycle_id:04d}
@@ -70,7 +72,7 @@ def build_design_brief(gap: GapItem, cycle_id: int) -> str:
 
 ## Suggested touch surfaces
 
-- `backend/app/routers/gateway.py` and related services
+- `{router_module}` and related services
 - `backend/tests/test_gateway_*.py`
 - `frontend/views/routing-gateway.html` and `frontend/app.js` (if operator UI needed)
 """

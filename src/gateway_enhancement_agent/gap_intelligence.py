@@ -109,12 +109,32 @@ def is_route_covered_in_tests(route: str | None, repo: Path | None = None) -> bo
     return bool(find_covering_test_files(repo, method, path))
 
 
-def is_gap_covered_for_delivery(gap_id: str, route: str | None, repo: Path | None = None) -> bool:
-    """In tests_first mode, a gap is covered only when its canonical dedicated test file exists."""
+def dedicated_test_file_exists(gap_id: str, route: str | None, repo: Path | None = None) -> bool:
     root = repo or target_repo()
-    if DeliveryConfig.from_env().tests_first:
-        target = suggest_test_path(gap_id, route)
-        return (root / target).is_file()
+    target = suggest_test_path(gap_id, route)
+    return (root / target).is_file()
+
+
+def is_gap_covered_for_delivery(
+    gap_id: str,
+    route: str | None,
+    repo: Path | None = None,
+    *,
+    coverage: str | None = None,
+) -> bool:
+    """Coverage semantics depend on delivery mode."""
+    root = repo or target_repo()
+    delivery = DeliveryConfig.from_env()
+    if delivery.tests_first:
+        return dedicated_test_file_exists(gap_id, route, root)
+    if delivery.full:
+        cov = (coverage or "").strip().lower()
+        # Partial inventory rows need UI/governance work — never auto-close on tests alone.
+        if cov == "partial":
+            return False
+        if cov == "gap" and dedicated_test_file_exists(gap_id, route, root):
+            return True
+        return False
     return is_route_covered_in_tests(route, root)
 
 
@@ -154,10 +174,18 @@ def adjust_gap_score(gap: GapItem, repo: Path | None = None, *, validation_failu
     cfg = load_gap_intelligence_config()
     score = gap.score
     method, path = parse_route(gap.route or gap.title)
+    root = repo or target_repo()
     if cfg.get("auto_close_covered_routes", True) and is_gap_covered_for_delivery(
-        gap.gap_id, gap.route or gap.title, repo
+        gap.gap_id, gap.route or gap.title, root, coverage=gap.coverage
     ):
         score += int(cfg.get("covered_route_penalty", 50))
+    elif (
+        DeliveryConfig.from_env().full
+        and gap.coverage
+        and gap.coverage.lower() == "partial"
+        and dedicated_test_file_exists(gap.gap_id, gap.route, root)
+    ):
+        score -= int(cfg.get("partial_backend_done_bonus", 6))
     score += difficulty_penalty(gap)
     if validation_failures > 0:
         score += validation_failures * int(cfg.get("repeated_failure_penalty", 8))

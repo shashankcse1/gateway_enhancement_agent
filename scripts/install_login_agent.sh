@@ -106,7 +106,11 @@ export AGENT_BACKGROUND_MODE="1"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\${PATH:-}"
 export AGENT_TOOL_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export OLLAMA_SERIAL="1"
-export PARALLEL_MAX_WORKERS="1"
+export DELIVERY_MODE="full"
+export PARALLEL_MAX_WORKERS="2"
+export LOCAL_LLM_NUM_CTX="12288"
+export AGENT_SCAFFOLD_EASY_GAPS="0"
+export GATEWAY_PYTHON="${AGENT_TARGET}/backend/.venv/bin/python"
 cd /tmp
 exec "${PYTHON_BIN}" -m gateway_enhancement_agent loop --interval "\${LOOP_INTERVAL_SECONDS}"
 SCRIPT

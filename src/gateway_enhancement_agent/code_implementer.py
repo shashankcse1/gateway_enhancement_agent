@@ -7,8 +7,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from gateway_enhancement_agent.config import target_repo
-from gateway_enhancement_agent.file_blocks import apply_file_blocks, extract_file_blocks
+from gateway_enhancement_agent.file_blocks import (
+    apply_llm_edits,
+    extract_file_blocks,
+    preview_llm_edits,
+    write_content_blocks,
+)
 from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
+from gateway_enhancement_agent.edit_instructions import IMPLEMENT_FILE_BLOCK_INSTRUCTION, PATCH_BLOCK_INSTRUCTION
 from gateway_enhancement_agent.gap_analyzer import GapItem
 from gateway_enhancement_agent.gap_intelligence import (
     build_tests_first_user_prompt,
@@ -19,9 +25,10 @@ from gateway_enhancement_agent.gap_intelligence import (
 )
 from gateway_enhancement_agent.local_llm import LLMConfig, LocalLLMClient
 from gateway_enhancement_agent.parallel_orchestrator import ParallelConfig, ParallelOrchestrator
-from gateway_enhancement_agent.prompt_budget import trim_to_token_budget
+from gateway_enhancement_agent.prompt_budget import build_context_from_paths, trim_to_token_budget
 from gateway_enhancement_agent.repo_access import read_repo_file
 from gateway_enhancement_agent.progress_log import log
+from gateway_enhancement_agent.route_modules import path_hints_for_gap, router_module_for_gap
 from gateway_enhancement_agent.security_guardrails import SecurityGuardrails
 
 
@@ -41,15 +48,8 @@ class ImplementResult:
 
 
 class CodeImplementer:
-    FILE_BLOCK_INSTRUCTION = (
-        "Respond ONLY with one or more file blocks in this exact format:\n"
-        "```file:backend/path/to/file.py\n"
-        "<full file contents>\n"
-        "```\n"
-        "Use paths relative to the repository root. Place tests under `backend/tests/` never `backend/app/tests/`. "
-        "When editing large existing files, output the COMPLETE file — never truncate. "
-        "Do not include secrets or .env files."
-    )
+    FILE_BLOCK_INSTRUCTION = IMPLEMENT_FILE_BLOCK_INSTRUCTION
+    PATCH_INSTRUCTION = PATCH_BLOCK_INSTRUCTION
 
     def __init__(self, config: LLMConfig | None = None, client: LocalLLMClient | None = None) -> None:
         self.config = config or LLMConfig.from_env()
@@ -106,6 +106,9 @@ class CodeImplementer:
                     or (parallel_result.error or "").startswith("No file blocks")
                     or "No file blocks" in (parallel_result.skipped_reason or "")
                 )
+                and "truncated" not in (parallel_result.error or "").lower()
+                and "guardrails" not in (parallel_result.error or "").lower()
+                and "forbidden" not in (parallel_result.error or "").lower()
             ):
                 single_result = self._implement_single(
                     gap, cycle_id=cycle_id, design_brief=design_brief, artifact_dir=artifact_dir, model=health.model
@@ -220,11 +223,7 @@ class CodeImplementer:
                     implementation_mode="parallel",
                     error="Pre-apply guardrails: " + "; ".join(pre_apply.violations),
                 )
-            files_written = apply_file_blocks(
-                repo,
-                "\n\n".join(f"```file:{p}\n{c.rstrip()}\n```" for p, c in sorted(blocks.items())),
-                allowed_prefixes=self._allowed_prefixes(),
-            )
+            files_written = write_content_blocks(repo, blocks, allowed_prefixes=self._allowed_prefixes())
             if files_written:
                 log(f"applied files: {', '.join(files_written)}", phase="implement")
             succeeded = bool(files_written)
@@ -279,11 +278,12 @@ class CodeImplementer:
                 template_rel=template_rel,
             )
         else:
+            router = router_module_for_gap(gap)
             system = (
                 "You are a senior gateway platform engineer. "
                 "Implement minimal, correct code changes in the target repository. "
                 "Follow security, audit, and least-privilege rules from AGENTS.md. "
-                + self.FILE_BLOCK_INSTRUCTION
+                + self.PATCH_INSTRUCTION
             )
             user = f"""# Implementation task — cycle {cycle_id:04d}
 
@@ -293,6 +293,7 @@ class CodeImplementer:
 - Route: {gap.route or 'N/A'}
 - Coverage: {gap.coverage or 'N/A'}
 - Rationale: {gap.rationale}
+- Owning router module: `{router}`
 
 ## Design brief
 {design_brief}
@@ -302,13 +303,15 @@ Target root: {repo}
 
 {context}
 
-Implement the smallest correct slice for this gap. Output complete files to create or replace.
+Implement the smallest correct slice for this gap.
+Use SEARCH/REPLACE patches for `{router}` and other existing files.
+Use ```file:``` blocks only for new test files or new modules.
 """
         try:
             response = self.client.chat(system=system, user=user, label="single_implement")
             llm_path = artifact_dir / "local_llm_response.md"
             llm_path.write_text(response, encoding="utf-8")
-            blocks = extract_file_blocks(response)
+            blocks = preview_llm_edits(repo, response)
             blocks = normalize_test_blocks(blocks, gap_id=gap.gap_id, route=gap.route)
             blocks, _dropped = filter_blocks_for_delivery(blocks, repo)
             if not blocks and delivery.tests_first:
@@ -331,11 +334,7 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                     implementation_mode="single",
                     error="Pre-apply guardrails: " + "; ".join(pre_apply.violations),
                 )
-            files_written = apply_file_blocks(
-                repo,
-                "\n\n".join(f"```file:{p}\n{c.rstrip()}\n```" for p, c in sorted(blocks.items())),
-                allowed_prefixes=self._allowed_prefixes(),
-            )
+            files_written = write_content_blocks(repo, blocks, allowed_prefixes=self._allowed_prefixes())
             return ImplementResult(
                 attempted=True,
                 succeeded=bool(files_written),
@@ -410,26 +409,16 @@ Implement the smallest correct slice for this gap. Output complete files to crea
                 "backend/tests/test_gateway_inference.py",
             ]
         else:
-            candidates = [
-                "backend/AGENTS.md",
-                "backend/docs/governance/api-inventory-and-ui-map.md",
-                "backend/app/routers/gateway.py",
-            ]
+            candidates = path_hints_for_gap(gap)
         if gap.route:
             route_key = gap.route.strip("/").replace("/", "_")
-            candidates.extend(
-                [
-                    f"backend/tests/test_gateway_{route_key}.py",
-                    "backend/tests/test_gateway_routes.py",
-                ]
-            )
-        candidates.extend(["frontend/app.js", "frontend/views/routing-gateway.html"])
-        if delivery.tests_first:
-            candidates = [c for c in candidates if c.startswith("backend/tests/")]
+            candidates.append(f"backend/tests/test_gateway_{route_key}.py")
         seen: set[str] = set()
         ordered: list[str] = []
         for rel in candidates:
             if rel not in seen:
                 seen.add(rel)
                 ordered.append(rel)
+        if delivery.tests_first:
+            ordered = [c for c in ordered if c.startswith("backend/tests/")]
         return ordered

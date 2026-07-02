@@ -1,10 +1,24 @@
 {
-  "version": 3,
+  "version": 4,
   "enabled": true,
-  "max_workers": 1,
-  "synthesizer_enabled": false,
-  "run_review_stage": false,
+  "max_workers": 2,
+  "synthesizer_enabled": true,
+  "run_review_stage": true,
   "workers": [
+    {
+      "id": "backend_contract",
+      "label": "Backend API contract",
+      "stage": "implement",
+      "component": "gateway-router",
+      "role_lens": null,
+      "write_mode": "patch",
+      "focus": "Implement or extend the owning router module for this gap route. Use SEARCH/REPLACE patches only — never rewrite whole files. For vector-store routes use gateway_rag.py, not gateway.py.",
+      "path_hints": [
+        "backend/app/routers/gateway_rag.py",
+        "backend/AGENTS.md",
+        "backend/docs/governance/api-inventory-and-ui-map.md"
+      ]
+    },
     {
       "id": "backend_tests",
       "label": "Backend tests",
@@ -12,8 +26,80 @@
       "component": "gateway-validation",
       "role_lens": "security_engineer",
       "write_mode": "patch",
-      "focus": "Create ONE new pytest file under backend/tests/ (do not edit existing tests). Mirror test_gateway_rag.py: ADMIN_HEADERS = {\"X-Actor-Role\": \"Platform Admin\", \"X-Actor-Id\": \"admin-upstream\"}; seed runtime config via TestClient before GET routes that need data. For missing auth assert 401; for deny assert 403. If the route is not implemented yet, assert status in (404, 501). Max 60 lines. Do NOT import backend.* or invent modules.",
-      "path_hints": ["backend/tests/test_gateway_rag.py", "backend/tests/test_gateway_inference.py", "backend/AGENTS.md"]
+      "focus": "Add focused pytest for the gap route: allow and deny paths, abuse cases, regression coverage. Use TestClient(app) from app.main. Mirror test_gateway_rag.py patterns.",
+      "path_hints": [
+        "backend/tests/test_gateway_rag.py",
+        "backend/tests/test_gateway_inference.py",
+        "backend/AGENTS.md"
+      ]
+    },
+    {
+      "id": "frontend_ui",
+      "label": "Operator UI",
+      "stage": "implement",
+      "component": "gateway-operator-ui",
+      "role_lens": "frontend_ui_expert",
+      "write_mode": "patch",
+      "focus": "Wire control-center UI when API inventory marks Partial/Gap. Use component partials; preserve accessibility and existing nav patterns.",
+      "path_hints": [
+        "frontend/app.js",
+        "frontend/views/routing-gateway.html",
+        "backend/docs/governance/ui-api-design-coverage-map.md"
+      ]
+    },
+    {
+      "id": "governance_docs",
+      "label": "Governance alignment",
+      "stage": "implement",
+      "component": "gateway-governance",
+      "role_lens": null,
+      "write_mode": "patch",
+      "focus": "Update API inventory, UI coverage map, and risk register when behavior or privileged actions change. Never shrink governance files.",
+      "path_hints": [
+        "backend/docs/governance/api-inventory-and-ui-map.md",
+        "backend/docs/governance/ui-api-design-coverage-map.md",
+        "backend/docs/security/residual-and-accepted-risk-register.md"
+      ]
+    },
+    {
+      "id": "security_architect",
+      "label": "Security Architect review",
+      "stage": "review",
+      "component": "gateway-authz-audit",
+      "role_lens": "security_architect",
+      "write_mode": "review",
+      "focus": "Review merged proposal for authz, least privilege, trust boundaries, and production-safe defaults. Flag BLOCKER if unsafe.",
+      "path_hints": ["backend/AGENTS.md", "backend/app/routers/gateway.py"]
+    },
+    {
+      "id": "audit_architect",
+      "label": "Audit Architect review",
+      "stage": "review",
+      "component": "gateway-authz-audit",
+      "role_lens": "audit_architect",
+      "write_mode": "review",
+      "focus": "Verify mutation audit, deny-path evidence, and traceability for changed endpoints.",
+      "path_hints": ["backend/AGENTS.md"]
+    },
+    {
+      "id": "ciso_lens",
+      "label": "CISO review",
+      "stage": "review",
+      "component": "gateway-governance",
+      "role_lens": "ciso_lens",
+      "write_mode": "review",
+      "focus": "Assess blast radius, residual risk, compensating controls, and go/no-go recommendation.",
+      "path_hints": ["backend/docs/security/residual-and-accepted-risk-register.md"]
+    },
+    {
+      "id": "cloud_engineer",
+      "label": "Cloud Engineer review",
+      "stage": "review",
+      "component": "gateway-router",
+      "role_lens": "cloud_engineer",
+      "write_mode": "review",
+      "focus": "Validate deployability, rollback, observability hooks, rate limits, and operational runbook impact.",
+      "path_hints": ["backend/AGENTS.md", "operations-quickstart.md"]
     }
   ]
 }

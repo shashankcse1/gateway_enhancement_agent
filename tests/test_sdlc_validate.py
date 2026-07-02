@@ -9,7 +9,7 @@ from gateway_enhancement_agent.sdlc_validate import (
 from gateway_enhancement_agent.validation_runner import GateResult
 
 
-def test_combined_validation_skips_agent_self_tests_for_test_only_changes(monkeypatch) -> None:
+def test_combined_validation_skips_agent_self_tests_for_test_only_changes(mock_target_repo, monkeypatch) -> None:
     monkeypatch.setattr(
         "gateway_enhancement_agent.sdlc_validate.SelfTestRunner.run_all",
         lambda self: (_ for _ in ()).throw(AssertionError("should not run")),

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from gateway_enhancement_agent.config import load_json, target_repo
 from gateway_enhancement_agent.delivery_config import DeliveryConfig
-from gateway_enhancement_agent.file_blocks import normalize_repo_path
+from gateway_enhancement_agent.path_utils import normalize_repo_path
 
 _MIN_LINES_DEFAULT: dict[str, int] = {
     "backend/app/routers/gateway.py": 500,
@@ -63,9 +63,9 @@ class SecurityGuardrails:
         for raw_rel, content in blocks.items():
             rel = normalize_repo_path(raw_rel)
             lower = rel.lower()
-            if delivery.is_forbidden_overwrite(rel) and (repo / rel).is_file():
+            if delivery.is_truncating_overwrite(rel, content, repo):
                 violations.append(
-                    f"Full overwrite of `{rel}` is forbidden — add tests/docs/services instead"
+                    f"Full overwrite of `{rel}` is forbidden — use SEARCH/REPLACE patches instead"
                 )
             for pattern in self.blocked_path_patterns:
                 if pattern.lower() in lower:

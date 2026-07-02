@@ -26,6 +26,8 @@ def test_backlog_sync_and_scheduled(tmp_path, monkeypatch):
 
 def test_backlog_reconcile_reopens_closed_without_dedicated_test(tmp_path, monkeypatch, mock_target_repo) -> None:
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DELIVERY_MODE", "tests_first")
+    monkeypatch.setenv("DELIVERY_CONFIG", "delivery_tests_first.json")
     store = BacklogStore()
     store.save(
         {
