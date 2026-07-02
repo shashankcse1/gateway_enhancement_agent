@@ -185,6 +185,7 @@ class BacklogStore:
         cfg = load_gap_intelligence_config()
         max_failures = int(cfg.get("max_validation_failures", 2))
         tests_first = DeliveryConfig.from_env().tests_first
+        full_mode = DeliveryConfig.from_env().full
 
         for idx, gap in enumerate(inventory_gaps):
             gap_id = f"inv-{idx:03d}"
@@ -198,7 +199,9 @@ class BacklogStore:
                 item["coverage"] = gap.coverage
                 changes.append(f"{gap_id}: synced title/route")
             if tests_first and item.get("status") == "closed":
-                if not is_gap_covered_for_delivery(gap_id, route, root):
+                if not is_gap_covered_for_delivery(
+                    gap_id, route, root, coverage=gap.coverage
+                ):
                     item["status"] = "open"
                     for key in (
                         "closed_reason",
@@ -209,6 +212,20 @@ class BacklogStore:
                     ):
                         item.pop(key, None)
                     changes.append(f"{gap_id}: reopened (dedicated test missing)")
+            elif full_mode and item.get("status") == "closed" and gap.coverage.lower() in {
+                "partial",
+                "gap",
+            }:
+                item["status"] = "open"
+                for key in (
+                    "closed_reason",
+                    "closed_cycle",
+                    "closed_at",
+                    "covering_test_files",
+                    "commit_sha",
+                ):
+                    item.pop(key, None)
+                changes.append(f"{gap_id}: reopened (full delivery — feature/UI work)")
             if (
                 cfg.get("auto_defer_on_max_failures", True)
                 and item.get("status") not in ("deferred", "closed")

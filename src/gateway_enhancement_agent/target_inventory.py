@@ -57,11 +57,21 @@ class TargetInventory:
         return backend if backend.is_dir() else self.repo
 
     def gateway_routes(self) -> int:
-        gateway_py = self._backend() / "app/routers/gateway.py"
-        text = self._read_text(gateway_py)
-        if not text:
+        total = 0
+        routers = self._backend() / "app" / "routers"
+        if not routers.is_dir():
             return 0
-        return len(GATEWAY_ROUTE.findall(text))
+        for path in sorted(routers.glob("gateway*.py")):
+            text = self._read_text(path)
+            if text:
+                total += len(GATEWAY_ROUTE.findall(text))
+        return total
+
+    def gateway_router_modules(self) -> list[str]:
+        routers = self._backend() / "app" / "routers"
+        if not routers.is_dir():
+            return []
+        return sorted(p.name for p in routers.glob("gateway*.py"))
 
     def gateway_tests(self) -> list[str]:
         tests = self._backend() / "tests"

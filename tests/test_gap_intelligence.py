@@ -3,6 +3,7 @@ from __future__ import annotations
 from gateway_enhancement_agent.backlog import BacklogStore
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.gap_intelligence import (
+    is_gap_covered_for_delivery,
     normalize_test_blocks,
     parse_route,
     route_mentioned_in_content,
@@ -10,6 +11,50 @@ from gateway_enhancement_agent.gap_intelligence import (
 )
 from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.test_repair import structured_pytest_failure
+
+
+def test_drop_unchanged_blocks(tmp_path) -> None:
+    from gateway_enhancement_agent.file_blocks import drop_unchanged_blocks
+
+    path = tmp_path / "backend/tests/test_x.py"
+    path.parent.mkdir(parents=True)
+    path.write_text("assert True\n", encoding="utf-8")
+    changed, dropped = drop_unchanged_blocks(
+        tmp_path,
+        {
+            "backend/tests/test_x.py": "assert True\n",
+            "backend/tests/test_new.py": "assert 1\n",
+        },
+    )
+    assert "backend/tests/test_new.py" in changed
+    assert "backend/tests/test_x.py" not in changed
+    assert any("no-op" in d for d in dropped)
+
+
+def test_full_mode_gap_auto_close_when_dedicated_test_exists(mock_target_repo, monkeypatch) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "full")
+    target = mock_target_repo / "backend/tests/test_gateway_delete_v1_responses_id.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def test_x():\n    assert True\n", encoding="utf-8")
+    assert is_gap_covered_for_delivery(
+        "inv-001",
+        "DELETE /v1/responses/{id}",
+        mock_target_repo,
+        coverage="Gap",
+    )
+
+
+def test_full_mode_partial_stays_open_when_test_exists(mock_target_repo, monkeypatch) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "full")
+    target = mock_target_repo / "backend/tests/test_gateway_get_v1_vector_stores.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def test_x():\n    assert True\n", encoding="utf-8")
+    assert not is_gap_covered_for_delivery(
+        "inv-003",
+        "GET /v1/vector_stores",
+        mock_target_repo,
+        coverage="Partial",
+    )
 
 
 def test_parse_route_with_method() -> None:
@@ -75,8 +120,23 @@ def test_backlog_auto_defer_after_failures(tmp_path, monkeypatch) -> None:
     assert "inv-001" in store.deferred_ids()
 
 
-def test_analyzer_keeps_vector_store_gap_without_dedicated_test(mock_target_repo, tmp_path, monkeypatch) -> None:
+def test_full_mode_keeps_partial_inventory_gaps_open(mock_target_repo, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "full")
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("DELIVERY_CONFIG", raising=False)
+    rag = mock_target_repo / "backend/tests/test_gateway_rag.py"
+    rag.parent.mkdir(parents=True, exist_ok=True)
+    rag.write_text('client.get("/v1/vector_stores", headers=ADMIN_HEADERS)\n', encoding="utf-8")
+    assert is_gap_covered_for_delivery(
+        "inv-001", "POST /v1/chat/completions", mock_target_repo, coverage="Partial"
+    ) is False
+    matrix = GapAnalyzer().build_matrix()
+    assert any(g.gap_id.startswith("inv-") for g in matrix)
+
+
+    monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("DELIVERY_MODE", "tests_first")
+    monkeypatch.setenv("DELIVERY_CONFIG", "delivery_tests_first.json")
     rag = mock_target_repo / "backend/tests/test_gateway_rag.py"
     rag.parent.mkdir(parents=True, exist_ok=True)
     rag.write_text(

@@ -15,7 +15,7 @@ from gateway_enhancement_agent.gap_intelligence import (
     load_gap_intelligence_config,
     parse_route,
 )
-from gateway_enhancement_agent.delivery_config import suggest_test_path
+from gateway_enhancement_agent.delivery_config import DeliveryConfig, filter_blocks_for_delivery, suggest_test_path
 from gateway_enhancement_agent.gap_models import GapItem
 from gateway_enhancement_agent.target_inventory import TargetInventory
 
@@ -34,7 +34,9 @@ class GapAnalyzer:
         kept: list[GapItem] = []
         for gap in matrix:
             route = gap.route or gap.title
-            if is_gap_covered_for_delivery(gap.gap_id, route, self.repo):
+            if is_gap_covered_for_delivery(
+                gap.gap_id, route, self.repo, coverage=gap.coverage
+            ):
                 continue
             kept.append(gap)
         return kept
@@ -53,7 +55,9 @@ class GapAnalyzer:
             if gap_id in deferred or gap_id in already_closed:
                 continue
             route = f"{gap.method} {gap.route}"
-            if not is_gap_covered_for_delivery(gap_id, route, self.repo):
+            if not is_gap_covered_for_delivery(
+                gap_id, route, self.repo, coverage=gap.coverage
+            ):
                 continue
             target = suggest_test_path(gap_id, route)
             files = [target] if (self.repo / target).is_file() else find_covering_test_files(
@@ -129,24 +133,27 @@ class GapAnalyzer:
                 )
             )
 
-        for theme_idx, theme in enumerate(self.competitors.optimization_themes()):
-            from gateway_enhancement_agent.delivery_config import DeliveryConfig
-
-            if DeliveryConfig.from_env().tests_first:
-                continue
-            items.append(
-                GapItem(
-                    gap_id=f"opt-{theme_idx:03d}",
-                    title=theme,
-                    source="optimization_theme",
-                    priority=3,
-                    score=30 + theme_idx,
-                    route=None,
-                    coverage=None,
-                    competitor_ids=["market"],
-                    rationale="Documented post-parity optimization theme",
+        inventory_count = len(items)
+        cfg = load_gap_intelligence_config()
+        include_optimization = not DeliveryConfig.from_env().tests_first
+        if include_optimization and cfg.get("prefer_inventory_gaps", True) and inventory_count > 0:
+            include_optimization = False
+        if include_optimization:
+            base_score = int(cfg.get("optimization_theme_base_score", 80))
+            for theme_idx, theme in enumerate(self.competitors.optimization_themes()):
+                items.append(
+                    GapItem(
+                        gap_id=f"opt-{theme_idx:03d}",
+                        title=theme,
+                        source="optimization_theme",
+                        priority=3,
+                        score=base_score + theme_idx,
+                        route=None,
+                        coverage=None,
+                        competitor_ids=["market"],
+                        rationale="Documented post-parity optimization theme",
+                    )
                 )
-            )
 
         by_title: dict[str, GapItem] = {}
         for item in items:
@@ -176,7 +183,7 @@ class GapAnalyzer:
             if "deprecated" in (gap.notes or "").lower():
                 continue
             route = f"{gap.method} {gap.route}"
-            if is_gap_covered_for_delivery(gap_id, route, self.repo):
+            if is_gap_covered_for_delivery(gap_id, route, self.repo, coverage=gap.coverage):
                 continue
             target = suggest_test_path(gap_id, route)
             score = 15 if gap.coverage.lower() == "partial" else 10

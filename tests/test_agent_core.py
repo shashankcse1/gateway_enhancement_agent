@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from gateway_enhancement_agent.competitor_registry import CompetitorRegistry
 from gateway_enhancement_agent.gap_analyzer import GapAnalyzer
 from gateway_enhancement_agent.target_inventory import TargetInventory
@@ -13,6 +15,15 @@ def test_target_inventory_finds_gaps(mock_target_repo) -> None:
     assert snap["gateway_route_count"] == 2
     assert snap["partial_gap_count"] == 2
     assert snap["agents_contract"] is True
+
+
+def test_gap_analyzer_prefers_inventory_over_optimization(mock_target_repo, monkeypatch) -> None:
+    monkeypatch.setenv("DELIVERY_MODE", "full")
+    monkeypatch.delenv("DELIVERY_CONFIG", raising=False)
+    matrix = GapAnalyzer().build_matrix()
+    if not matrix:
+        pytest.skip("no inventory gaps in fixture")
+    assert matrix[0].gap_id.startswith("inv-")
 
 
 def test_gap_analyzer_prioritizes_gap_over_partial(mock_target_repo) -> None:
